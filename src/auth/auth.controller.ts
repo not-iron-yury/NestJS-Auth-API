@@ -23,7 +23,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Get('profile')
   getMyProfile(@CurrentUser() user: User) {
-    return { id: user.id, email: user.email };
+    return user; // глобальный интерсептор ClassSerializerInterceptor преобразует ответ, откинув лишние данные
   }
 
   @UseGuards(JwtAuthGuard)
