@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { type User } from '@prisma/client';
 import { LoginDto } from 'src/auth/dto/login.dto';
 import { RegisterDto } from 'src/auth/dto/register.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt.guard';
+import { CurrentUser } from 'src/decorators/current-user.decorator';
 import { AuthService } from './auth.service';
 
 @Controller('auth')
@@ -20,8 +22,13 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Get('profile')
-  getProfile(@Req() req: any) {
-    const user = req.user;
+  getMyProfile(@CurrentUser() user: User) {
     return { id: user.id, email: user.email };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('email')
+  getMyEmail(@CurrentUser('email') email: string) {
+    return { email };
   }
 }
