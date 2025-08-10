@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
+import { UserDto } from 'src/auth/dto/user.dto';
 import { type JwtPayload } from 'src/auth/types/jwt-payload.type';
 import { PrismaService } from 'src/prisma/prisma.service';
 
@@ -33,6 +34,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     // возвращаем объект, который попадёт в request.user
-    return user;
+    return new UserDto(user);
   }
 }
