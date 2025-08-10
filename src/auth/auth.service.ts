@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import bcrypt from 'bcrypt';
@@ -34,7 +38,7 @@ export class AuthService {
         error instanceof PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        throw new ForbiddenException(
+        throw new ConflictException(
           'Пользователь с таким email уже существует',
         );
       }
@@ -47,11 +51,13 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    if (!user) throw new ForbiddenException('Такой пользователь не существует');
+    if (!user)
+      throw new UnauthorizedException('Такой пользователь не существует');
 
     // сравниваем хеши паролей
     const isValidPassword = await bcrypt.compare(dto.password, user.hash);
-    if (!isValidPassword) throw new ForbiddenException('Неправильные данные');
+    if (!isValidPassword)
+      throw new UnauthorizedException('Неправильные данные');
 
     // формируем access token
     const payload = { sub: user.id, email: user.email };
