@@ -31,6 +31,7 @@ import { AuthService } from './auth.service';
       }),
     }),
     PrismaModule,
+    JwtModule.register({}),
   ],
   controllers: [AuthController],
   providers: [AuthService, PrismaService],
