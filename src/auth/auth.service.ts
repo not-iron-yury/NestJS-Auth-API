@@ -22,6 +22,40 @@ export class AuthService {
     private readonly config: ConfigService,
   ) {}
 
+  private async buildAccessToken(userId: number, email: string) {
+    const payload = { sub: userId, email };
+    return await this.jwt.signAsync(payload);
+  }
+
+  private async createAndStoreRefreshToken(
+    userId: number,
+    meta?: { ip?: string; deviceInfo?: string },
+    tx = this.prisma, // можно передавать PrismaTransactionClient для транзакции
+  ) {
+    // генерация refresh токена
+    const rawToken = randomBytes(40).toString('hex');
+    const hashedToken = HmacSha256Hex(rawToken);
+
+    // дата истечения
+    const expiresAt = new Date();
+    expiresAt.setDate(
+      expiresAt.getDate() + Number(this.config.get('REFRESH_TOKEN_EXPIRES_IN')),
+    );
+
+    // запить refreshToken в БД
+    await tx.refreshToken.create({
+      data: {
+        userId,
+        token: hashedToken,
+        expiresAt,
+        createdByIp: meta?.ip || null,
+        deviceInfo: meta?.deviceInfo || null,
+      },
+    });
+
+    return rawToken;
+  }
+
   async register(
     dto: RegisterDto,
     meta?: { ip?: string; deviceInfo?: string },
@@ -29,46 +63,33 @@ export class AuthService {
     const hash = await bcrypt.hash(dto.password, 10);
 
     try {
-      const result = await this.prisma.$transaction(async (tx) => {
-        const user = await tx.user.create({
-          data: {
-            email: dto.email,
-            hash,
-          },
-        });
+      const { user, refreshToken } = await this.prisma.$transaction(
+        // передаем в prisma.$transaction асинхронную функцию с запросами к БД
+        async (tx: PrismaService) => {
+          // сохраняем пользователя в БД
+          const user = await tx.user.create({
+            data: { email: dto.email, hash },
+          });
 
-        // генерация refresh токена
-        const rawRefreshToken = randomBytes(40).toString('hex');
-        const hashedRefreshToken = HmacSha256Hex(rawRefreshToken);
+          // сохраняем refreshToken в БД
+          const refreshToken = await this.createAndStoreRefreshToken(
+            user.id,
+            meta,
+            tx, // все запросы, выполненные через объект tx, попадают внутрь общей транзакции
+          );
 
-        // дата истечения
-        const expiresAt = new Date();
-        expiresAt.setDate(
-          expiresAt.getDate() +
-            Number(this.config.get('REFRESH_TOKEN_EXPIRES_IN')),
-        );
+          // возвр. пользователя и сырой токен
+          return { user, refreshToken };
+        },
+      );
 
-        await tx.refreshToken.create({
-          data: {
-            userId: user.id,
-            token: hashedRefreshToken,
-            expiresAt,
-            createdByIp: meta?.ip,
-            deviceInfo: meta?.deviceInfo,
-          },
-        });
+      // создаем accessToken
+      const accessToken = await this.buildAccessToken(user.id, user.email);
 
-        return { user, rawRefreshToken };
-      });
-
-      // генерация access token
-      const payload = { sub: result.user.id, email: result.user.email };
-      const accessToken = await this.jwt.signAsync(payload);
-
+      // возвр. структурированных данных пользователя и двух токенов
       return {
-        user: new UserDto(result.user),
-        access_token: accessToken,
-        refresh_token: result.rawRefreshToken,
+        user: new UserDto(user),
+        tokens: { accessToken, refreshToken },
       };
     } catch (error) {
       if (
@@ -94,48 +115,15 @@ export class AuthService {
     if (!isValidPassword)
       throw new UnauthorizedException('Неправильные данные');
 
-    // формируем access token
-    const tokens = await this.generateTokens(user, meta);
+    // accessToken
+    const accessToken = await this.buildAccessToken(user.id, user.email);
+
+    // refresToken
+    const refreshToken = await this.createAndStoreRefreshToken(user.id, meta);
 
     return {
       user: new UserDto(user),
-      tokens,
-    };
-  }
-
-  private async generateTokens(
-    user: { id: number; email: string },
-    meta?: { ip?: string; deviceInfo?: string },
-  ) {
-    // 1) Access Token
-    const payload = { sub: user.id, email: user.email };
-    const accessToken = await this.jwt.signAsync(payload); // второй параметр (options) подтягивается из DI Jwt config
-
-    // 2) Refresh Token
-    const rawToken = randomBytes(40).toString('hex'); // сырой токен
-    const hashedToken = HmacSha256Hex(rawToken); // хэш токена
-
-    // 3) дата истечения
-    const expiresAt = new Date();
-    expiresAt.setDate(
-      expiresAt.getDate() + Number(this.config.get('REFRESH_TOKEN_EXPIRES_IN')),
-    );
-
-    // 4) записываем Refresh Token в БД
-    await this.prisma.refreshToken.create({
-      data: {
-        userId: user.id,
-        token: hashedToken,
-        expiresAt,
-        createdByIp: meta?.ip || null,
-        deviceInfo: meta?.deviceInfo || null,
-      },
-    });
-
-    // 5) возвращаем оба токена
-    return {
-      accessToken,
-      refreshToken: hashedToken, // клиенту возвращаем сырой вариант
+      tokens: { accessToken, refreshToken: refreshToken },
     };
   }
 }
