@@ -26,34 +26,56 @@ export class AuthService {
     dto: RegisterDto,
     meta?: { ip?: string; deviceInfo?: string },
   ) {
-    try {
-      // хэшируем пароль
-      const hash = await bcrypt.hash(dto.password, 10);
+    const hash = await bcrypt.hash(dto.password, 10);
 
-      // пытаемся создать нового пользователя в БД (с уникальным email)
-      const user = await this.prisma.user.create({
-        data: {
-          email: dto.email,
-          hash,
-        },
+    try {
+      const result = await this.prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: {
+            email: dto.email,
+            hash,
+          },
+        });
+
+        // генерация refresh токена
+        const rawRefreshToken = randomBytes(40).toString('hex');
+        const hashedRefreshToken = HmacSha256Hex(rawRefreshToken);
+
+        // дата истечения
+        const expiresAt = new Date();
+        expiresAt.setDate(
+          expiresAt.getDate() +
+            Number(this.config.get('REFRESH_TOKEN_EXPIRES_IN')),
+        );
+
+        await tx.refreshToken.create({
+          data: {
+            userId: user.id,
+            token: hashedRefreshToken,
+            expiresAt,
+            createdByIp: meta?.ip,
+            deviceInfo: meta?.deviceInfo,
+          },
+        });
+
+        return { user, rawRefreshToken };
       });
 
-      // если всё прошло успешно - создаем токены
-      const tokens = await this.generateTokens(user, meta);
+      // генерация access token
+      const payload = { sub: result.user.id, email: result.user.email };
+      const accessToken = await this.jwt.signAsync(payload);
 
-      // возвращаем структурированные данные пользователя и оба токена
       return {
-        user: new UserDto(user),
-        tokens,
+        user: new UserDto(result.user),
+        access_token: accessToken,
+        refresh_token: result.rawRefreshToken,
       };
     } catch (error) {
       if (
         error instanceof PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        throw new ConflictException(
-          'Пользователь с таким email уже существует',
-        );
+        throw new ConflictException('Email already in use');
       }
       throw error;
     }
