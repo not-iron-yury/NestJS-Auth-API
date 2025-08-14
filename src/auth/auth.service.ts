@@ -6,10 +6,12 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import bcrypt from 'bcrypt';
+import { randomBytes } from 'crypto';
 import { LoginDto } from 'src/auth/dto/login.dto';
 import { RegisterDto } from 'src/auth/dto/register.dto';
 import { UserDto } from 'src/auth/dto/user.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { HmacSha256Hex } from 'src/utils/crypto';
 
 @Injectable()
 export class AuthService {
@@ -67,5 +69,31 @@ export class AuthService {
       //user: new UserDto(user),
       access_token: token,
     };
+  }
+
+  private async generateRefreshToken(
+    userId: number,
+    createdByIp?: string,
+    deviceInfo?: string,
+  ) {
+    const rawToken = randomBytes(40).toString('hex'); // сырой токен
+    const hashedToken = HmacSha256Hex(rawToken);
+
+    const expiresAt = new Date();
+    expiresAt.setDate(
+      expiresAt.getDate() + Number(process.env.REFRESH_TOKEN_TTL_DAYS),
+    );
+
+    await this.prisma.refreshToken.create({
+      data: {
+        userId,
+        token: hashedToken,
+        expiresAt,
+        createdByIp,
+        deviceInfo,
+      },
+    });
+
+    return rawToken; // возвращаем сырой токен (оригинал)
   }
 }
