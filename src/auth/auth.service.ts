@@ -3,6 +3,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import bcrypt from 'bcrypt';
@@ -18,12 +19,17 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly config: ConfigService,
   ) {}
 
-  async register(dto: RegisterDto) {
-    const hash = await bcrypt.hash(dto.password, 10);
-
+  async register(
+    dto: RegisterDto,
+    meta?: { ip?: string; deviceInfo?: string },
+  ) {
     try {
+      // хэшируем пароль
+      const hash = await bcrypt.hash(dto.password, 10);
+
       // пытаемся создать нового пользователя в БД (с уникальным email)
       const user = await this.prisma.user.create({
         data: {
@@ -32,9 +38,14 @@ export class AuthService {
         },
       });
 
-      // если всё прошло успешно
+      // если всё прошло успешно - создаем токены
+      const tokens = await this.generateTokens(user, meta);
 
-      return new UserDto(user);
+      // возвращаем структурированные данные пользователя и оба токена
+      return {
+        user: new UserDto(user),
+        tokens,
+      };
     } catch (error) {
       if (
         error instanceof PrismaClientKnownRequestError &&
@@ -48,7 +59,7 @@ export class AuthService {
     }
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, meta?: { ip?: string; deviceInfo?: string }) {
     // проверяем пользователя
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
@@ -62,38 +73,47 @@ export class AuthService {
       throw new UnauthorizedException('Неправильные данные');
 
     // формируем access token
-    const payload = { sub: user.id, email: user.email };
-    const token = await this.jwt.signAsync(payload);
+    const tokens = await this.generateTokens(user, meta);
 
     return {
-      //user: new UserDto(user),
-      access_token: token,
+      user: new UserDto(user),
+      tokens,
     };
   }
 
-  private async generateRefreshToken(
-    userId: number,
-    createdByIp?: string,
-    deviceInfo?: string,
+  private async generateTokens(
+    user: { id: number; email: string },
+    meta?: { ip?: string; deviceInfo?: string },
   ) {
-    const rawToken = randomBytes(40).toString('hex'); // сырой токен
-    const hashedToken = HmacSha256Hex(rawToken);
+    // 1) Access Token
+    const payload = { sub: user.id, email: user.email };
+    const accessToken = await this.jwt.signAsync(payload); // второй параметр (options) подтягивается из DI Jwt config
 
+    // 2) Refresh Token
+    const rawToken = randomBytes(40).toString('hex'); // сырой токен
+    const hashedToken = HmacSha256Hex(rawToken); // хэш токена
+
+    // 3) дата истечения
     const expiresAt = new Date();
     expiresAt.setDate(
-      expiresAt.getDate() + Number(process.env.REFRESH_TOKEN_TTL_DAYS),
+      expiresAt.getDate() + Number(this.config.get('REFRESH_TOKEN_EXPIRES_IN')),
     );
 
+    // 4) записываем Refresh Token в БД
     await this.prisma.refreshToken.create({
       data: {
-        userId,
+        userId: user.id,
         token: hashedToken,
         expiresAt,
-        createdByIp,
-        deviceInfo,
+        createdByIp: meta?.ip || null,
+        deviceInfo: meta?.deviceInfo || null,
       },
     });
 
-    return rawToken; // возвращаем сырой токен (оригинал)
+    // 5) возвращаем оба токена
+    return {
+      accessToken,
+      refreshToken: hashedToken, // клиенту возвращаем сырой вариант
+    };
   }
 }
