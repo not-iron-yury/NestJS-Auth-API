@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   UnauthorizedException,
@@ -125,5 +126,101 @@ export class AuthService {
       user: new UserDto(user),
       tokens: { accessToken, refreshToken: refreshToken },
     };
+  }
+
+  async refresh(
+    rawRefreshToken: string,
+    meta?: { ip?: string; deviceInfo?: string },
+  ) {
+    if (!rawRefreshToken) {
+      throw new BadRequestException('Refresh token обязателен');
+    }
+
+    // хэшируем сырой токен
+    const hashed = HmacSha256Hex(rawRefreshToken);
+
+    // берем токен из БД и связанные с ним данные пользователя
+    const existing = await this.prisma.refreshToken.findUnique({
+      where: { token: hashed }, // условие выбора
+      include: { user: true }, // включение связанных записей из таблицы user
+    });
+
+    // если токен не найден или не найдены связанные с ним данные
+    if (!existing || !existing.user) {
+      throw new UnauthorizedException('Неправильный refresh token');
+    }
+    // если токен уже отозван
+    if (existing.revoked) {
+      throw new UnauthorizedException('Refresh token отозван');
+    }
+    // если истек срок годности
+    if (
+      existing.createdAt <=
+      new Date(
+        new Date().getDate() +
+          Number(this.config.get('REFRESH_TOKEN_EXPIRES_IN')),
+      )
+    ) {
+      throw new UnauthorizedException('Refresh token просрочен');
+    }
+
+    // Ротация одной транзакцией
+    const updateRefreshToken = async (tx: PrismaService) => {
+      // ревок старого токена
+      await tx.refreshToken.update({
+        where: { token: hashed },
+        data: { revoked: true },
+      });
+
+      // новый refresh (сырой в переменную, хэшированный в БД)
+      const newRawRefres = await this.createAndStoreRefreshToken(
+        existing.userId,
+        meta,
+        tx,
+      );
+      // новый access
+      const newAccess = await this.buildAccessToken(
+        existing.user.id,
+        existing.user.email,
+      );
+
+      return {
+        user: new UserDto(existing.user),
+        tokens: {
+          accessToken: newAccess,
+          refreshToken: newRawRefres,
+        },
+      };
+    };
+    const result = await this.prisma.$transaction(updateRefreshToken);
+    return result;
+  }
+
+  async revok(rawRefreshToken: string) {
+    if (!rawRefreshToken) {
+      throw new BadRequestException('Refresh token обязателен');
+    }
+
+    const hashed = HmacSha256Hex(rawRefreshToken);
+    const existing = await this.prisma.refreshToken.findUnique({
+      where: { token: hashed },
+    });
+
+    // если не найден
+    if (!existing) {
+      throw new UnauthorizedException('Неправильный refresh token');
+    }
+    // если уже отозван
+    if (existing.revoked) {
+      return; // ничего не делаем, т.к. токен уже отозван
+    }
+
+    // ревок старого токена
+    await this.prisma.refreshToken.update({
+      where: { token: hashed },
+      data: { revoked: true },
+    });
+
+    return;
   }
 }
