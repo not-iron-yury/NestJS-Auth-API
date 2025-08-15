@@ -1,23 +1,51 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { type User } from '@prisma/client';
+import type { Request, Response } from 'express';
 import { LoginDto } from 'src/auth/dto/login.dto';
 import { RegisterDto } from 'src/auth/dto/register.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt.guard';
 import { CurrentUser } from 'src/decorators/current-user.decorator';
+import { setRefreshTokenCookie } from 'src/utils/set-refresh-token-cookie';
 import { AuthService } from './auth.service';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly config: ConfigService,
+  ) {}
 
   @Post('register')
-  register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
+  async register(
+    @Body() dto: RegisterDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
+    const { user, tokens } = await this.authService.register(dto, meta);
+    setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token через куку
+    return { user, access_token: tokens.accessToken };
   }
 
   @Post('login')
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  async login(
+    @Body() dto: LoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
+    const { user, tokens } = await this.authService.login(dto, meta);
+    setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token через куку
+    return { user, access_token: tokens.accessToken };
   }
 
   @UseGuards(JwtAuthGuard)

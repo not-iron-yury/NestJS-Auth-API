@@ -1,11 +1,13 @@
 import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
 import { NestFactory, Reflector } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule); // создаем приложение
   app.useGlobalPipes(new ValidationPipe({ whitelist: true })); // добавляем глобальную проверку валидности входящих данных (ко всему приложению)
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector))); // глабальная установка interceptors, для обработки исходящих данных (например, объект UserDto)
+  app.use(cookieParser());
   await app.listen(process.env.PORT ?? 3000); // слушаем запросы на определенном порту
 }
 bootstrap(); // запускаем процедуру старта

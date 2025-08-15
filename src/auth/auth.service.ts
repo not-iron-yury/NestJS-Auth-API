@@ -96,7 +96,7 @@ export class AuthService {
         error instanceof PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        throw new ConflictException('Email already in use');
+        throw new ConflictException('Такой email уже используется');
       }
       throw error;
     }
