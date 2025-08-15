@@ -6,6 +6,7 @@ import { JwtStrategy } from 'src/auth/strategies/jwt.strategy';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { RefreshTokenCleanupService } from './refresh-token-cleanup.service';
 
 @Module({
   imports: [
@@ -34,6 +35,6 @@ import { AuthService } from './auth.service';
     JwtModule.register({}),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, RefreshTokenCleanupService],
 })
 export class AuthModule {}
