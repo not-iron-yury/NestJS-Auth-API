@@ -9,11 +9,11 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
-import { LoginDto } from 'src/auth/dto/login.dto';
-import { RegisterDto } from 'src/auth/dto/register.dto';
-import { UserDto } from 'src/auth/dto/user.dto';
-import { PrismaService } from 'src/prisma/prisma.service';
-import { HmacSha256Hex } from 'src/utils/crypto';
+import { PrismaService } from '../../prisma/prisma.service';
+import { HmacSha256Hex } from '../../utils/crypto';
+import { LoginDto } from './dto/login.dto';
+import { RegisterDto } from './dto/register.dto';
+import { UserDto } from './dto/user.dto';
 
 @Injectable()
 export class AuthService {

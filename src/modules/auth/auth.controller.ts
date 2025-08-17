@@ -1,22 +1,11 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Post,
-  Req,
-  Res,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Post, Req, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { type User } from '@prisma/client';
 import type { Request, Response } from 'express';
-import { LoginDto } from 'src/auth/dto/login.dto';
-import { RefreshDto } from 'src/auth/dto/refresh.dto';
-import { RegisterDto } from 'src/auth/dto/register.dto';
-import { JwtAuthGuard } from 'src/auth/guards/jwt.guard';
-import { CurrentUser } from 'src/decorators/current-user.decorator';
-import { setRefreshTokenCookie } from 'src/utils/set-refresh-token-cookie';
+import { setRefreshTokenCookie } from '../../utils/set-refresh-token-cookie';
 import { AuthService } from './auth.service';
+import { LoginDto } from './dto/login.dto';
+import { RefreshDto } from './dto/refresh.dto';
+import { RegisterDto } from './dto/register.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -80,17 +69,5 @@ export class AuthController {
     await this.authService.revok(refreshToken); // revok refresh токена
     res.clearCookie('refresh_token');
     return { message: 'Logout done' };
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Get('profile')
-  getMyProfile(@CurrentUser() user: User) {
-    return user; // глобальный интерсептор ClassSerializerInterceptor преобразует ответ, откинув лишние данные
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Get('email')
-  getMyEmail(@CurrentUser('email') email: string) {
-    return { email };
   }
 }

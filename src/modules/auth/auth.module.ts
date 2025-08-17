@@ -2,15 +2,15 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { JwtStrategy } from 'src/auth/strategies/jwt.strategy';
-import { PrismaModule } from 'src/prisma/prisma.module';
+import { PrismaModule } from '../../prisma/prisma.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { RefreshTokenCleanupService } from './refresh-token-cleanup.service';
+import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
   imports: [
-    PassportModule,
+    PassportModule.register({ defaultStrategy: 'jwt' }),
 
     // Централизованное управлени конфигурационными параметрами (такими как ключи шифрования и сроки жизни токенов) -
     // уменьшает потребность в многократном обращении к среде выполнения (process.env) в различных частях приложения.
@@ -32,7 +32,6 @@ import { RefreshTokenCleanupService } from './refresh-token-cleanup.service';
       }),
     }),
     PrismaModule,
-    JwtModule.register({}),
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, RefreshTokenCleanupService],
