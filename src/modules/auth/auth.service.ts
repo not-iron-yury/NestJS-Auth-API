@@ -6,14 +6,15 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { Role as PrismaRole } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
+import { LoginDto } from 'src/modules/auth/dto/login.dto';
+import { RegisterDto } from 'src/modules/auth/dto/register.dto';
+import { UserDto } from 'src/modules/user/dto/user.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HmacSha256Hex } from '../../utils/crypto';
-import { LoginDto } from './dto/login.dto';
-import { RegisterDto } from './dto/register.dto';
-import { UserDto } from './dto/user.dto';
 
 @Injectable()
 export class AuthService {
@@ -23,8 +24,12 @@ export class AuthService {
     private readonly config: ConfigService,
   ) {}
 
-  private async buildAccessToken(userId: number, email: string) {
-    const payload = { sub: userId, email };
+  private async buildAccessToken(
+    userId: number,
+    email: string,
+    role: PrismaRole,
+  ) {
+    const payload = { sub: userId, email, role };
     return await this.jwt.signAsync(payload);
   }
 
@@ -85,7 +90,11 @@ export class AuthService {
       );
 
       // создаем accessToken
-      const accessToken = await this.buildAccessToken(user.id, user.email);
+      const accessToken = await this.buildAccessToken(
+        user.id,
+        user.email,
+        user.role,
+      );
 
       // возвр. структурированных данных пользователя и двух токенов
       return {
@@ -117,7 +126,11 @@ export class AuthService {
       throw new UnauthorizedException('Неправильные данные');
 
     // accessToken
-    const accessToken = await this.buildAccessToken(user.id, user.email);
+    const accessToken = await this.buildAccessToken(
+      user.id,
+      user.email,
+      user.role,
+    );
 
     // refresToken
     const refreshToken = await this.createAndStoreRefreshToken(user.id, meta);
@@ -182,6 +195,7 @@ export class AuthService {
       const newAccess = await this.buildAccessToken(
         existing.user.id,
         existing.user.email,
+        existing.user.role,
       );
 
       return {

@@ -2,11 +2,11 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { AuthController } from 'src/modules/auth/auth.controller';
+import { AuthService } from 'src/modules/auth/auth.service';
+import { RefreshTokenCleanupService } from 'src/modules/auth/refresh-token-cleanup.service';
+import { JwtStrategy } from 'src/modules/auth/strategies/jwt.strategy';
 import { PrismaModule } from '../../prisma/prisma.module';
-import { AuthController } from './auth.controller';
-import { AuthService } from './auth.service';
-import { RefreshTokenCleanupService } from './refresh-token-cleanup.service';
-import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
   imports: [

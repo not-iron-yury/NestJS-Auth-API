@@ -1,11 +1,11 @@
 import { Body, Controller, Post, Req, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
+import { AuthService } from 'src/modules/auth/auth.service';
+import { LoginDto } from 'src/modules/auth/dto/login.dto';
+import { RefreshDto } from 'src/modules/auth/dto/refresh.dto';
+import { RegisterDto } from 'src/modules/auth/dto/register.dto';
 import { setRefreshTokenCookie } from '../../utils/set-refresh-token-cookie';
-import { AuthService } from './auth.service';
-import { LoginDto } from './dto/login.dto';
-import { RefreshDto } from './dto/refresh.dto';
-import { RegisterDto } from './dto/register.dto';
 
 @Controller('auth')
 export class AuthController {
