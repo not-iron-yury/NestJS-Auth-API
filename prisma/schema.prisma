@@ -14,13 +14,15 @@ enum Role {
 }
 
 model User {
-  id           Int            @id @default(autoincrement())
-  email        String         @unique
-  hash         String
-  role         Role           @default(USER)
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  RefreshToken RefreshToken[]
+  id                     Int                      @id @default(autoincrement())
+  email                  String                   @unique
+  hash                   String
+  role                   Role                     @default(USER)
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  RefreshToken           RefreshToken[]
+  EmailVerificationToken EmailVerificationToken[]
+  PasswordResetToken     PasswordResetToken[]
 }
 
 model RefreshToken {
@@ -36,4 +38,35 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+model EmailVerificationToken {
+  id          Int      @id @default(autoincrement())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      Int
+  token       String   @unique // хранится ХЭШ токена
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+  used        Boolean  @default(false)
+  createdByIp String?
+  deviceInfo  String?
+
+  @@index([userId])
+  @@map("email_verification_tokens")
+}
+
+model PasswordResetToken {
+  id          Int       @id @default(autoincrement())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      Int
+  token       String    @unique // хранится ХЭШ токена
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  used        Boolean   @default(false)
+  usedAt      DateTime?
+  createdByIp String?
+  deviceInfo  String?
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }
