@@ -10,16 +10,26 @@ import { UserService } from 'src/modules/user/user.service';
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
-  @UseGuards(JwtAuthGuard)
-  @Get('profile')
-  getMyProfile(@CurrentUser() user: User) {
-    return user; // глобальный интерсептор ClassSerializerInterceptor преобразует ответ, откинув лишние данные
-  }
-
+  // только ADMIN
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Get('all')
   @Roles(Role.ADMIN)
+  @Get('all')
   getAllUsers() {
     return this.userService.findAll();
+  }
+
+  // MANAGER и ADMIN
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MANAGER, Role.ADMIN)
+  @Get('manager')
+  getManagerView() {
+    return { message: 'Ты не такой как все, ты...' };
+  }
+
+  // любой аутентифицированный
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  getMyProfile(@CurrentUser() user: User) {
+    return user; // глобальный интерсептор ClassSerializerInterceptor преобразует ответ, откинув лишние данные
   }
 }
