@@ -1,7 +1,7 @@
-import { Role as PrismaRole } from '@prisma/client';
+import { Role } from '@prisma/client';
 
 export type JwtPayload = {
   sub: number;
   email: string;
-  role: PrismaRole; // Prisma-тип
+  role: Role; // Prisma-тип
 };

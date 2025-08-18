@@ -1,10 +1,10 @@
-import { Role as PrismaRole } from '@prisma/client';
+import { Role } from '@prisma/client';
 import { Exclude } from 'class-transformer';
 
 export class UserDto {
   id: number;
   email: string;
-  role: PrismaRole; // Prisma-тип
+  role: Role; // Prisma-тип
 
   @Exclude() // гарантирует, что данное поле не будет сериализовано при преобразовании объекта в JSON (или другое представление)
   hash: string;

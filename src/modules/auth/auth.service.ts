@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { Role as PrismaRole } from '@prisma/client';
+import type { Role } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
@@ -24,11 +24,7 @@ export class AuthService {
     private readonly config: ConfigService,
   ) {}
 
-  private async buildAccessToken(
-    userId: number,
-    email: string,
-    role: PrismaRole,
-  ) {
+  private async buildAccessToken(userId: number, email: string, role: Role) {
     const payload = { sub: userId, email, role };
     return await this.jwt.signAsync(payload);
   }
