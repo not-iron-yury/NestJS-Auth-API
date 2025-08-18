@@ -2,12 +2,14 @@ import {
   CanActivate,
   ExecutionContext,
   ForbiddenException,
+  Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Role } from '@prisma/client';
-import { ROLE_KEY } from 'src/modules/auth/decorators/roles.decorator';
+import { ROLES_KEY } from 'src/modules/auth/decorators/roles.decorator';
 
+@Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
@@ -15,7 +17,7 @@ export class RolesGuard implements CanActivate {
   // но запускается уже после JwtAuthGuard (который валидирует и получает из БД данные пользователя)
   canActivate(context: ExecutionContext): boolean {
     // получаем список всех требований по ролям, указанных в декораторах (@Roles())
-    const requiredRoles = this.reflector.getAllAndOverride<Role[]>(ROLE_KEY, [
+    const requiredRoles = this.reflector.getAllAndOverride<Role[]>(ROLES_KEY, [
       context.getHandler(), // ищем роль на уровне метода контроллера
       context.getClass(), // ищем роль на уровне класса-контроллера
     ]);
@@ -40,7 +42,7 @@ export class RolesGuard implements CanActivate {
 
     // если нет роли — отказываем в доступе
     if (!userRole) {
-      throw new UnauthorizedException('No role assigned to user');
+      throw new ForbiddenException('No role assigned to user');
     }
 
     // если роль пользователя "ниже" допустимыой — отказываем в доступе "недостаточно прав"
