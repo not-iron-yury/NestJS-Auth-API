@@ -91,7 +91,7 @@ export class AuthService {
 
     // 5) создаем ссыль подтверждения
     const appUrl = this.config.get('APP_URL') as string;
-    const link = appUrl + rawToken;
+    const link = `${appUrl}/auth/confirm-email?token=${rawToken}`;
 
     // 6) отправка письма (эмуляция) - вызываем MailService и просто выполняем логирование
     this.mailService.sendVerificationEmail(user.email, link, meta);
@@ -277,5 +277,37 @@ export class AuthService {
     });
 
     return;
+  }
+
+  async confirmEmail(token: string) {
+    // 1) берем из БД токен и связанный с ним user
+    const verifiedToken = await this.prisma.emailVerificationToken.findUnique({
+      where: { token },
+      include: { user: true },
+    });
+
+    // 2) проверяем существование токена
+    if (!verifiedToken) {
+      throw new BadRequestException('Неправильный email токен');
+    }
+
+    // 3) проверяем срок годности токена
+    if (verifiedToken.expiresAt < new Date()) {
+      throw new BadRequestException('Email токен просрочен');
+    }
+
+    // 4) подтверждаем пользователя
+    await this.prisma.user.update({
+      where: { id: verifiedToken.userId },
+      data: { isActive: true },
+    });
+
+    // 5) удаляем использованный токен (больше в нем необходимости нет)
+    await this.prisma.emailVerificationToken.delete({
+      where: { id: verifiedToken.id },
+    });
+
+    // 6) возвращаем сообщение
+    return { message: 'Email подтвержден' };
   }
 }

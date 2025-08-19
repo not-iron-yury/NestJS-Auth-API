@@ -1,4 +1,13 @@
-import { Body, Controller, Post, Req, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 import { CurrentUser } from 'src/decorators/current-user.decorator';
@@ -71,6 +80,11 @@ export class AuthController {
     await this.authService.revok(refreshToken); // revok refresh токена
     res.clearCookie('refresh_token');
     return { message: 'Logout done' };
+  }
+
+  @Get('confirm-email')
+  async confirmEmail(@Query('token') token: string) {
+    return this.authService.confirmEmail(token);
   }
 
   // для тестирования
