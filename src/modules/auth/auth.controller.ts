@@ -1,10 +1,12 @@
-import { Body, Controller, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
+import { CurrentUser } from 'src/decorators/current-user.decorator';
 import { AuthService } from 'src/modules/auth/auth.service';
 import { LoginDto } from 'src/modules/auth/dto/login.dto';
 import { RefreshDto } from 'src/modules/auth/dto/refresh.dto';
 import { RegisterDto } from 'src/modules/auth/dto/register.dto';
+import { JwtAuthGuard } from 'src/modules/auth/guards/jwt.guard';
 import { setRefreshTokenCookie } from '../../utils/set-refresh-token-cookie';
 
 @Controller('auth')
@@ -69,5 +71,17 @@ export class AuthController {
     await this.authService.revok(refreshToken); // revok refresh токена
     res.clearCookie('refresh_token');
     return { message: 'Logout done' };
+  }
+
+  // для тестирования
+  @UseGuards(JwtAuthGuard)
+  @Post('email-verification')
+  async sendVerification(
+    @CurrentUser('id') userId: number,
+    @Req() req: Request,
+  ) {
+    const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
+    const res = await this.authService.sendEmailVerifikation(userId, meta);
+    return { message: 'Verification email sent', info: res.link };
   }
 }

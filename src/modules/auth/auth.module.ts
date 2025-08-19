@@ -7,6 +7,7 @@ import { AuthService } from 'src/modules/auth/auth.service';
 import { RefreshTokenCleanupService } from 'src/modules/auth/refresh-token-cleanup.service';
 import { JwtStrategy } from 'src/modules/auth/strategies/jwt.strategy';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { MailModule } from 'src/modules/mail/mail.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
       }),
     }),
     PrismaModule,
+    MailModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, RefreshTokenCleanupService],

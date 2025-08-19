@@ -12,6 +12,7 @@ import bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { LoginDto } from 'src/modules/auth/dto/login.dto';
 import { RegisterDto } from 'src/modules/auth/dto/register.dto';
+import { MailService } from 'src/modules/mail/mail.service';
 import { UserDto } from 'src/modules/user/dto/user.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HmacSha256Hex } from '../../utils/crypto';
@@ -22,6 +23,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly mailService: MailService,
   ) {}
 
   private async buildAccessToken(userId: number, email: string, role: Role) {
@@ -44,7 +46,7 @@ export class AuthService {
       expiresAt.getDate() + Number(this.config.get('REFRESH_TOKEN_EXPIRES_IN')),
     );
 
-    // запить refreshToken в БД
+    // сохраняем refreshToken в БД
     await tx.refreshToken.create({
       data: {
         userId,
@@ -56,6 +58,46 @@ export class AuthService {
     });
 
     return rawToken;
+  }
+
+  async sendEmailVerifikation(
+    userId: number,
+    meta?: { ip?: string; deviceInfo?: string },
+  ) {
+    // 1) получаем email пользователя
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new BadRequestException('Пользователь не найден');
+
+    // 2) генерируем сырой emailToken и хэшируем его
+    const rawToken = randomBytes(40).toString('hex');
+    const hashedToken = HmacSha256Hex(rawToken);
+
+    // 3) вычисляем expiresAt
+    const expiresAt = new Date();
+    expiresAt.setHours(
+      expiresAt.getHours() + Number(this.config.get('EMAIL_TOKEN_TTL_HOURS')),
+    );
+
+    // 4) сохраняем emailToken в БД
+    await this.prisma.emailVerificationToken.create({
+      data: {
+        userId,
+        token: hashedToken,
+        expiresAt,
+        createdByIp: meta?.ip || null,
+        deviceInfo: meta?.deviceInfo || null,
+      },
+    });
+
+    // 5) создаем ссыль подтверждения
+    const appUrl = this.config.get('APP_URL') as string;
+    const link = appUrl + rawToken;
+
+    // 6) отправка письма (эмуляция) - вызываем MailService и просто выполняем логирование
+    this.mailService.sendVerificationEmail(user.email, link, meta);
+
+    // 7) возврат (пока так)
+    return { success: true, link: link };
   }
 
   async register(
@@ -91,6 +133,9 @@ export class AuthService {
         user.email,
         user.role,
       );
+
+      // ссылка на подтверждение почты
+      await this.sendEmailVerifikation(user.id, meta);
 
       // возвр. структурированных данных пользователя и двух токенов
       return {
