@@ -1,21 +1,10 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Post,
-  Query,
-  Req,
-  Res,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Req, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
-import { CurrentUser } from 'src/decorators/current-user.decorator';
 import { AuthService } from 'src/modules/auth/auth.service';
 import { LoginDto } from 'src/modules/auth/dto/login.dto';
 import { RefreshDto } from 'src/modules/auth/dto/refresh.dto';
 import { RegisterDto } from 'src/modules/auth/dto/register.dto';
-import { JwtAuthGuard } from 'src/modules/auth/guards/jwt.guard';
 import { setRefreshTokenCookie } from '../../utils/set-refresh-token-cookie';
 
 @Controller('auth')
@@ -82,20 +71,20 @@ export class AuthController {
     return { message: 'Logout done' };
   }
 
+  // подтверждениe email и активации нового пользователя
   @Get('confirm-email')
   async confirmEmail(@Query('token') token: string) {
     return this.authService.confirmEmail(token);
   }
 
-  // для тестирования
-  @UseGuards(JwtAuthGuard)
+  // запрос ссылки для подтверждения email
   @Post('email-verification')
-  async sendVerification(
-    @CurrentUser('id') userId: number,
-    @Req() req: Request,
-  ) {
+  async sendVerification(@Body('email') email: string, @Req() req: Request) {
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
-    const res = await this.authService.sendEmailVerifikation(userId, meta);
-    return { message: 'Verification email sent', info: res.link };
+    const res = await this.authService.sendEmailVerifikation(email, meta);
+    return {
+      message: res.message,
+      info: res.link || 'В повторном подтверждении нет нобходимости',
+    };
   }
 }
