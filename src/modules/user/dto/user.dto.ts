@@ -5,6 +5,7 @@ export class UserDto {
   id: number;
   email: string;
   role: Role; // Prisma-тип
+  isActive: boolean;
 
   @Exclude() // гарантирует, что данное поле не будет сериализовано при преобразовании объекта в JSON (или другое представление)
   hash: string;

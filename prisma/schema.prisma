@@ -18,6 +18,7 @@ model User {
   email                  String                   @unique
   hash                   String
   role                   Role                     @default(USER)
+  isActive               Boolean                  @default(false)
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime                 @updatedAt
   RefreshToken           RefreshToken[]
