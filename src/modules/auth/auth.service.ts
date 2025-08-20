@@ -311,15 +311,18 @@ export class AuthService {
       throw new BadRequestException('Email токен просрочен');
     }
 
-    // 4) подтверждаем пользователя
-    await this.prisma.user.update({
-      where: { id: verifiedToken.userId },
-      data: { isActive: true },
-    });
+    await this.prisma.$transaction(async (tx) => {
+      // 4) подтверждаем пользователя
+      await tx.user.update({
+        where: { id: verifiedToken.userId },
+        data: { isActive: true },
+      });
 
-    // 5) удаляем использованный токен (больше в нем необходимости нет)
-    await this.prisma.emailVerificationToken.delete({
-      where: { id: verifiedToken.id },
+      // 5) маркируем токен как использованный
+      await tx.emailVerificationToken.update({
+        where: { id: verifiedToken.id },
+        data: { used: true },
+      });
     });
 
     // 6) возвращаем сообщение
