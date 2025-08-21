@@ -4,10 +4,11 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthController } from 'src/modules/auth/auth.controller';
 import { AuthService } from 'src/modules/auth/auth.service';
+import { EmailConfirmService } from 'src/modules/auth/email-confirm.service';
 import { RefreshTokenCleanupService } from 'src/modules/auth/refresh-token-cleanup.service';
 import { JwtStrategy } from 'src/modules/auth/strategies/jwt.strategy';
-import { PrismaModule } from '../../prisma/prisma.module';
 import { MailModule } from 'src/modules/mail/mail.module';
+import { PrismaModule } from '../../prisma/prisma.module';
 
 @Module({
   imports: [
@@ -36,6 +37,11 @@ import { MailModule } from 'src/modules/mail/mail.module';
     MailModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, RefreshTokenCleanupService],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    RefreshTokenCleanupService,
+    EmailConfirmService,
+  ],
 })
 export class AuthModule {}

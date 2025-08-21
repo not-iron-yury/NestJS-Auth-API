@@ -5,6 +5,8 @@ import { AuthService } from 'src/modules/auth/auth.service';
 import { LoginDto } from 'src/modules/auth/dto/login.dto';
 import { RefreshDto } from 'src/modules/auth/dto/refresh.dto';
 import { RegisterDto } from 'src/modules/auth/dto/register.dto';
+import { RequestEmailVerificationDto } from 'src/modules/auth/dto/request-email-verification.dto';
+import { EmailConfirmService } from 'src/modules/auth/email-confirm.service';
 import { setRefreshTokenCookie } from '../../utils/set-refresh-token-cookie';
 
 @Controller('auth')
@@ -12,6 +14,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly config: ConfigService,
+    private readonly emailConfirmService: EmailConfirmService,
   ) {}
 
   @Post('register')
@@ -74,14 +77,20 @@ export class AuthController {
   // подтверждениe email и активации нового пользователя
   @Get('confirm-email')
   async confirmEmail(@Query('token') token: string) {
-    return this.authService.confirmEmail(token);
+    return this.emailConfirmService.confirmEmail(token);
   }
 
   // запрос ссылки для подтверждения email
   @Post('email-verification')
-  async sendVerification(@Body('email') email: string, @Req() req: Request) {
+  async sendVerification(
+    @Body() dto: RequestEmailVerificationDto, // валидация на email, что б не делать лишние запросы к БД
+    @Req() req: Request,
+  ) {
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
-    const res = await this.authService.sendEmailVerifikation(email, meta);
+    const res = await this.emailConfirmService.sendEmailVerifikation(
+      dto.email,
+      meta,
+    );
     return {
       message: res.message,
       info: res.link || 'В повторном подтверждении нет нобходимости',
