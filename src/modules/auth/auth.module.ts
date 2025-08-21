@@ -5,6 +5,7 @@ import { PassportModule } from '@nestjs/passport';
 import { AuthController } from 'src/modules/auth/auth.controller';
 import { AuthService } from 'src/modules/auth/auth.service';
 import { EmailConfirmService } from 'src/modules/auth/email-confirm.service';
+import { PasswordResetSevice } from 'src/modules/auth/password-reset.service';
 import { RefreshTokenCleanupService } from 'src/modules/auth/refresh-token-cleanup.service';
 import { JwtStrategy } from 'src/modules/auth/strategies/jwt.strategy';
 import { MailModule } from 'src/modules/mail/mail.module';
@@ -42,6 +43,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
     JwtStrategy,
     RefreshTokenCleanupService,
     EmailConfirmService,
+    PasswordResetSevice,
   ],
 })
 export class AuthModule {}

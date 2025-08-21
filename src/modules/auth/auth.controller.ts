@@ -6,7 +6,10 @@ import { LoginDto } from 'src/modules/auth/dto/login.dto';
 import { RefreshDto } from 'src/modules/auth/dto/refresh.dto';
 import { RegisterDto } from 'src/modules/auth/dto/register.dto';
 import { RequestEmailVerificationDto } from 'src/modules/auth/dto/request-email-verification.dto';
+import { RequestPasswordResetDto } from 'src/modules/auth/dto/request-password-reset.dto';
+import { ResetPasswordDto } from 'src/modules/auth/dto/reset-password.dto';
 import { EmailConfirmService } from 'src/modules/auth/email-confirm.service';
+import { PasswordResetSevice } from 'src/modules/auth/password-reset.service';
 import { setRefreshTokenCookie } from '../../utils/set-refresh-token-cookie';
 
 @Controller('auth')
@@ -15,6 +18,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly config: ConfigService,
     private readonly emailConfirmService: EmailConfirmService,
+    private readonly passwordResetSevice: PasswordResetSevice,
   ) {}
 
   @Post('register')
@@ -74,7 +78,7 @@ export class AuthController {
     return { message: 'Logout done' };
   }
 
-  // подтверждениe email и активации нового пользователя
+  // валидация ссылки подтверждения (в письме) и активация нового пользователя в случае успеха
   @Get('confirm-email')
   async confirmEmail(@Query('token') token: string) {
     return this.emailConfirmService.confirmEmail(token);
@@ -95,5 +99,32 @@ export class AuthController {
       message: res.message,
       info: res.link || 'В повторном подтверждении нет нобходимости',
     };
+  }
+
+  // запрос на смену пароля
+  @Post('request-password-reset')
+  async requestPasswordReset(
+    @Body() dto: RequestPasswordResetDto,
+    @Req() req: Request,
+  ) {
+    const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
+    return await this.passwordResetSevice.requestPasswordReset(dto.email, meta);
+  }
+
+  // валидация ссылки подтверждения (в письме) - опционально, сделано для фронта (показывать форму если valid:true )
+  @Get('verify-password-reset')
+  async verifyResetToken(@Query('token') token: string) {
+    return await this.passwordResetSevice.verifyResetToken(token);
+  }
+
+  // смена пароля (отправка нового пароля)
+  @Post('reset-password')
+  async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request) {
+    const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
+    return this.passwordResetSevice.resetePassword(
+      dto.token,
+      dto.newPassword,
+      meta,
+    );
   }
 }
