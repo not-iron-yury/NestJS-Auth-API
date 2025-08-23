@@ -1,7 +1,7 @@
-import { HttpException } from '@nestjs/common';
+import { HttpException, HttpStatus } from '@nestjs/common';
 
 export class TooManyRequestsException extends HttpException {
   constructor(message = 'Too many requests') {
-    super(message, 429);
+    super(message, HttpStatus.TOO_MANY_REQUESTS);
   }
 }

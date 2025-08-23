@@ -19,6 +19,7 @@ model User {
   hash                   String
   role                   Role                     @default(USER)
   isActive               Boolean                  @default(false)
+  lockedUntil            DateTime?
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime                 @updatedAt
   RefreshToken           RefreshToken[]

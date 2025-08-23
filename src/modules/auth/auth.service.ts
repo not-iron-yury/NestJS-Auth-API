@@ -130,25 +130,10 @@ export class AuthService {
       this.config.get('LOGIN_ATTEMPT_WINDOW_MINUTES') ?? 15,
     );
 
-    // 2) узначем количество последних неудачных попыток
-    const failed = await this.loginAttemptService.countFailedAttempts(
-      email,
-      windowMin,
-    );
+    //  2) пытаемся найти пользователя - нужен для проверки lockedUntil и записи userId в лог
+    const user = await this.prisma.user.findUnique({ where: { email } });
 
-    // 3) если достигнут лимит - выбрасываем исключение
-    if (failed >= maxAttempt) {
-      throw new TooManyRequestsException(
-        'Слишком много неудачных попыток входа в систему. Повторите попытку позже.',
-      );
-    }
-
-    //  3) пытаемся найти пользователя
-    const user = await this.prisma.user.findUnique({
-      where: { email },
-    });
-
-    //  4) если пользователь не найден - записываем попытку входа (без userID) и выбрасываем исключение
+    //  3) если пользователь не найден - записываем попытку входа (без userID)
     if (!user) {
       await this.loginAttemptService.recordAttempt({
         email,
@@ -158,14 +143,22 @@ export class AuthService {
         success: false,
         reason: LoginAttemptReason.USER_NOT_FOUND,
       });
-      throw new UnauthorizedException('Такой пользователь не существует');
+      throw new UnauthorizedException('Неверные учетные данные');
     }
 
-    // 5) сравниваем хеши паролей
+    // 4) если пользователь найден, но он заблокирован
+    if (user?.lockedUntil && user.lockedUntil > new Date()) {
+      throw new TooManyRequestsException(
+        `Аккаунт заблокирован до ${user.lockedUntil}. Повторите попытку через ${lockMin} минут.`,
+      );
+    }
+
+    // 5) если пользователь найден и не заблокирован:
     const isValidPassword = await bcrypt.compare(password, user.hash);
 
-    // 6) если пароль не валидный - записываем попытку входа (c userId) и выбрасываем исключение
+    // 5-1) если пароль не валидный
     if (!isValidPassword) {
+      //  записываем попытку входа (c userId)
       await this.loginAttemptService.recordAttempt({
         email,
         userId: user.id,
@@ -175,14 +168,31 @@ export class AuthService {
         reason: LoginAttemptReason.INVALID_PASSWORD,
       });
 
-      // повторно проверяем лимит неудачных попыток (т.к. пользователь был найден)
+      // узнаем количество последних неудачных попыток этого пользователя
+      const failed = await this.loginAttemptService.countFailedAttempts(
+        email,
+        windowMin,
+      );
+      // если лимит попыток превышен - блокируем пользователя
       if (failed >= maxAttempt) {
-        // блокируем пользователя или выполняем иные действия
+        // вычисляем дату окончания блокировки
+        const lockedUntil = new Date();
+        lockedUntil.setMinutes(lockedUntil.getMinutes() + lockMin);
+
+        // блокируем до lockedUntil
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { lockedUntil },
+        });
+
+        throw new TooManyRequestsException(
+          `Слишком много неудачных попыток входа в систему. Повторите попытку через ${lockMin} мин.`,
+        );
       }
       throw new UnauthorizedException('Неправильные данные');
     }
 
-    // 7) записываем успешную попытку входа
+    // 5-2) если пароль валидный - записываем успешную попытку входа
     await this.loginAttemptService.recordAttempt({
       email,
       userId: user.id,
@@ -192,18 +202,16 @@ export class AuthService {
       reason: LoginAttemptReason.OK,
     });
 
-    // 8) Опиционально. Тут можно удалить старые записи, или данные можно сохранить для аудита.
-    await this.loginAttemptService.deleteOlderThan(5);
+    // 6) Опиционально. Можно удалить старые записи, или сохранить для аудита.
+    await this.loginAttemptService.deleteOlderThan(10); // оставляет все записи за последние 10 дней
 
-    // 9) создаем accessToken
+    // 10) создаем токены
+    const refreshToken = await this.createAndStoreRefreshToken(user.id, meta);
     const accessToken = await this.buildAccessToken(
       user.id,
       user.email,
       user.role,
     );
-
-    // 10) создаем refresToken
-    const refreshToken = await this.createAndStoreRefreshToken(user.id, meta);
 
     return {
       user: new UserDto(user),
