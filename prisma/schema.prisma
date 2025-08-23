@@ -24,6 +24,7 @@ model User {
   RefreshToken           RefreshToken[]
   EmailVerificationToken EmailVerificationToken[]
   PasswordResetToken     PasswordResetToken[]
+  LoginAttempt           LoginAttempt[]
 }
 
 model RefreshToken {
@@ -70,4 +71,20 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+model LoginAttempt {
+  id        Int      @id @default(autoincrement())
+  email     String?
+  userId    Int? // nullable: пользователь (с полученным email) может не существовать
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ip        String?
+  userAgent String?
+  success   Boolean  @default(false)
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([userId, createdAt])
+  @@map("login_attempts")
 }
