@@ -28,7 +28,11 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
-    const { user, tokens } = await this.authService.register(dto, meta);
+    const { user, tokens } = await this.authService.register(
+      dto.password,
+      dto.email,
+      meta,
+    );
     setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token через куку
     return { user, access_token: tokens.accessToken };
   }
@@ -40,7 +44,11 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
-    const { user, tokens } = await this.authService.login(dto, meta);
+    const { user, tokens } = await this.authService.login(
+      dto.email,
+      dto.password,
+      meta,
+    );
     setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token через куку
     return { user, access_token: tokens.accessToken };
   }

@@ -10,9 +10,10 @@ import type { Role } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
-import { LoginDto } from 'src/modules/auth/dto/login.dto';
-import { RegisterDto } from 'src/modules/auth/dto/register.dto';
+import { TooManyRequestsException } from 'src/exceptions/TooManyRequestsException';
 import { EmailConfirmService } from 'src/modules/auth/email-confirm.service';
+import { LoginAttemptReason } from 'src/modules/auth/enums/login-attempt-reason.enum';
+import { LoginAttemptService } from 'src/modules/auth/login-attempt.service';
 import { MailService } from 'src/modules/mail/mail.service';
 import { UserDto } from 'src/modules/user/dto/user.dto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -26,6 +27,7 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly mailService: MailService,
     private readonly emailConfirmService: EmailConfirmService,
+    private readonly loginAttemptService: LoginAttemptService,
   ) {}
 
   private async buildAccessToken(userId: number, email: string, role: Role) {
@@ -63,10 +65,11 @@ export class AuthService {
   }
 
   async register(
-    dto: RegisterDto,
+    password: string,
+    email: string,
     meta?: { ip?: string; deviceInfo?: string },
   ) {
-    const hash = await bcrypt.hash(dto.password, 10);
+    const hash = await bcrypt.hash(password, 10);
 
     try {
       const { user, refreshToken } = await this.prisma.$transaction(
@@ -74,7 +77,7 @@ export class AuthService {
         async (tx: PrismaService) => {
           // сохраняем пользователя в БД
           const user = await tx.user.create({
-            data: { email: dto.email, hash },
+            data: { email, hash },
           });
 
           // сохраняем refreshToken в БД
@@ -115,27 +118,91 @@ export class AuthService {
     }
   }
 
-  async login(dto: LoginDto, meta?: { ip?: string; deviceInfo?: string }) {
-    // проверяем пользователя
+  async login(
+    email: string,
+    password: string,
+    meta?: { ip?: string; deviceInfo?: string },
+  ) {
+    // 1) определяем константы: лимит попыток, вермя блокировки, временное окно
+    const maxAttempt = Number(this.config.get('LOGIN_MAX_ATTEMPTS') ?? 5);
+    const lockMin = Number(this.config.get('LOCK_TIME_MINUTES') ?? 15);
+    const windowMin = Number(
+      this.config.get('LOGIN_ATTEMPT_WINDOW_MINUTES') ?? 15,
+    );
+
+    // 2) узначем количество последних неудачных попыток
+    const failed = await this.loginAttemptService.countFailedAttempts(
+      email,
+      windowMin,
+    );
+
+    // 3) если достигнут лимит - выбрасываем исключение
+    if (failed >= maxAttempt) {
+      throw new TooManyRequestsException(
+        'Слишком много неудачных попыток входа в систему. Повторите попытку позже.',
+      );
+    }
+
+    //  3) пытаемся найти пользователя
     const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+      where: { email },
     });
-    if (!user)
+
+    //  4) если пользователь не найден - записываем попытку входа (без userID) и выбрасываем исключение
+    if (!user) {
+      await this.loginAttemptService.recordAttempt({
+        email,
+        userId: null,
+        ip: meta?.ip,
+        userAgent: meta?.deviceInfo,
+        success: false,
+        reason: LoginAttemptReason.USER_NOT_FOUND,
+      });
       throw new UnauthorizedException('Такой пользователь не существует');
+    }
 
-    // сравниваем хеши паролей
-    const isValidPassword = await bcrypt.compare(dto.password, user.hash);
-    if (!isValidPassword)
+    // 5) сравниваем хеши паролей
+    const isValidPassword = await bcrypt.compare(password, user.hash);
+
+    // 6) если пароль не валидный - записываем попытку входа (c userId) и выбрасываем исключение
+    if (!isValidPassword) {
+      await this.loginAttemptService.recordAttempt({
+        email,
+        userId: user.id,
+        ip: meta?.ip,
+        userAgent: meta?.deviceInfo,
+        success: false,
+        reason: LoginAttemptReason.INVALID_PASSWORD,
+      });
+
+      // повторно проверяем лимит неудачных попыток (т.к. пользователь был найден)
+      if (failed >= maxAttempt) {
+        // блокируем пользователя или выполняем иные действия
+      }
       throw new UnauthorizedException('Неправильные данные');
+    }
 
-    // accessToken
+    // 7) записываем успешную попытку входа
+    await this.loginAttemptService.recordAttempt({
+      email,
+      userId: user.id,
+      ip: meta?.ip,
+      userAgent: meta?.deviceInfo,
+      success: true,
+      reason: LoginAttemptReason.OK,
+    });
+
+    // 8) Опиционально. Тут можно удалить старые записи, или данные можно сохранить для аудита.
+    await this.loginAttemptService.deleteOlderThan(5);
+
+    // 9) создаем accessToken
     const accessToken = await this.buildAccessToken(
       user.id,
       user.email,
       user.role,
     );
 
-    // refresToken
+    // 10) создаем refresToken
     const refreshToken = await this.createAndStoreRefreshToken(user.id, meta);
 
     return {
