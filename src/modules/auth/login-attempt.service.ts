@@ -6,15 +6,18 @@ export class LoginAttemptService {
   constructor(private readonly prisma: PrismaService) {}
 
   // записываем попытку залогиниться в БД
-  async recordAttempt(params: {
-    email: string;
-    userId?: number | null;
-    ip?: string | null;
-    userAgent?: string | null;
-    success: boolean;
-    reason?: string | null;
-  }) {
-    await this.prisma.loginAttempt.create({
+  async recordAttempt(
+    params: {
+      email: string;
+      userId?: number | null;
+      ip?: string | null;
+      userAgent?: string | null;
+      success: boolean;
+      reason?: string | null;
+    },
+    tx: PrismaService = this.prisma,
+  ) {
+    await tx.loginAttempt.create({
       data: {
         email: params.email,
         userId: params.userId ?? null,
@@ -31,12 +34,13 @@ export class LoginAttemptService {
   async countFailedAttempts(
     email: string,
     windowMinutes: number,
+    tx: PrismaService = this.prisma,
   ): Promise<number> {
     // 1)
     const since = new Date(Date.now() - windowMinutes * 60 * 1000);
 
     // 2) считаем количество записей в таблице login_attempt и возвращаем их число
-    const result = await this.prisma.loginAttempt.count({
+    const result = await tx.loginAttempt.count({
       where: {
         email,
         success: false,
@@ -48,14 +52,14 @@ export class LoginAttemptService {
   }
 
   // опцииональный helper - удаляет в БД устаревшие записи попыток злогиниться
-  async deleteOlderThan(days: number) {
-    // 1)  определяем крайнюю дату с учетом указанного количества дней
+  async deleteOlderThan(days: number, tx: PrismaService = this.prisma) {
     const since = new Date();
     since.setDate(since.getDate() - days);
 
-    // 2) удаялем все записи в БД до крайней даты, и оставляем записи только за последние <days> дней.
-    await this.prisma.loginAttempt.deleteMany({
-      where: { createdAt: { lt: since } }, // условие "все записи, у которых createdAt < since"
+    const countDeleted = await tx.loginAttempt.deleteMany({
+      where: { createdAt: { lt: since } },
     });
+
+    return countDeleted;
   }
 }

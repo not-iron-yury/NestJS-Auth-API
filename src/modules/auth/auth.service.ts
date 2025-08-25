@@ -14,7 +14,6 @@ import { TooManyRequestsException } from 'src/exceptions/TooManyRequestsExceptio
 import { EmailConfirmService } from 'src/modules/auth/email-confirm.service';
 import { LoginAttemptReason } from 'src/modules/auth/enums/login-attempt-reason.enum';
 import { LoginAttemptService } from 'src/modules/auth/login-attempt.service';
-import { MailService } from 'src/modules/mail/mail.service';
 import { UserDto } from 'src/modules/user/dto/user.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HmacSha256Hex } from '../../utils/crypto';
@@ -25,7 +24,6 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
-    private readonly mailService: MailService,
     private readonly emailConfirmService: EmailConfirmService,
     private readonly loginAttemptService: LoginAttemptService,
   ) {}
@@ -130,26 +128,36 @@ export class AuthService {
       this.config.get('LOGIN_ATTEMPT_WINDOW_MINUTES') ?? 15,
     );
 
-    //  2) пытаемся найти пользователя - нужен для проверки lockedUntil и записи userId в лог
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    //  2) пытаемся найти пользователя (нужен для проверки lockedUntil и записи userId в лог)
+    const user = await this.prisma.$transaction(async (tx: PrismaService) => {
+      const existing = await tx.user.findUnique({ where: { email } });
+      //  если не найден - записываем неудачную попытку входа (без userID)
+      if (!existing) {
+        await this.loginAttemptService.recordAttempt(
+          {
+            email,
+            userId: null,
+            ip: meta?.ip,
+            userAgent: meta?.deviceInfo,
+            success: false,
+            reason: LoginAttemptReason.USER_NOT_FOUND,
+          },
+          tx,
+        );
+        return false;
+      }
+      return existing;
+    });
 
-    //  3) если пользователь не найден - записываем попытку входа (без userID)
+    //  3) если пользователь не найден
     if (!user) {
-      await this.loginAttemptService.recordAttempt({
-        email,
-        userId: null,
-        ip: meta?.ip,
-        userAgent: meta?.deviceInfo,
-        success: false,
-        reason: LoginAttemptReason.USER_NOT_FOUND,
-      });
       throw new UnauthorizedException('Неверные учетные данные');
     }
 
     // 4) если пользователь найден, но он заблокирован
     if (user?.lockedUntil && user.lockedUntil > new Date()) {
       throw new TooManyRequestsException(
-        `Аккаунт заблокирован до ${user.lockedUntil}. Повторите попытку через ${lockMin} минут.`,
+        `Аккаунт заблокирован. Повторите попытку через ${lockMin} минут.`,
       );
     }
 
@@ -158,37 +166,42 @@ export class AuthService {
 
     // 5-1) если пароль не валидный
     if (!isValidPassword) {
-      //  записываем попытку входа (c userId)
-      await this.loginAttemptService.recordAttempt({
-        email,
-        userId: user.id,
-        ip: meta?.ip,
-        userAgent: meta?.deviceInfo,
-        success: false,
-        reason: LoginAttemptReason.INVALID_PASSWORD,
-      });
-
-      // узнаем количество последних неудачных попыток этого пользователя
-      const failed = await this.loginAttemptService.countFailedAttempts(
-        email,
-        windowMin,
-      );
-      // если лимит попыток превышен - блокируем пользователя
-      if (failed >= maxAttempt) {
-        // вычисляем дату окончания блокировки
-        const lockedUntil = new Date();
-        lockedUntil.setMinutes(lockedUntil.getMinutes() + lockMin);
-
-        // блокируем до lockedUntil
-        await this.prisma.user.update({
-          where: { id: user.id },
-          data: { lockedUntil },
+      await this.prisma.$transaction(async (tx) => {
+        //  записываем попытку входа (c userId)
+        await tx.loginAttempt.create({
+          data: {
+            email,
+            userId: user.id,
+            ip: meta?.ip,
+            userAgent: meta?.deviceInfo,
+            success: false,
+            reason: LoginAttemptReason.INVALID_PASSWORD,
+          },
         });
 
-        throw new TooManyRequestsException(
-          `Слишком много неудачных попыток входа в систему. Повторите попытку через ${lockMin} мин.`,
-        );
-      }
+        // считаем количество неудачных попыток за временное окно
+        const since = new Date(Date.now() - windowMin * 60 * 1000);
+        const failed = await tx.loginAttempt.count({
+          where: {
+            email,
+            success: false,
+            createdAt: { gte: since }, // "все записи, у которых createdAt >= since" | gte = "greater than or equal" (больше или равно)
+          },
+        });
+
+        // блокируем, если лимит превышен
+        if (failed >= maxAttempt) {
+          // вычисляем дату окончания блокировки
+          const lockedUntil = new Date();
+          lockedUntil.setMinutes(lockedUntil.getMinutes() + lockMin);
+
+          // блокируем до lockedUntil
+          await tx.user.update({
+            where: { id: user.id },
+            data: { lockedUntil },
+          });
+        }
+      });
       throw new UnauthorizedException('Неправильные данные');
     }
 
@@ -202,10 +215,7 @@ export class AuthService {
       reason: LoginAttemptReason.OK,
     });
 
-    // 6) Опиционально. Можно удалить старые записи, или сохранить для аудита.
-    await this.loginAttemptService.deleteOlderThan(10); // оставляет все записи за последние 10 дней
-
-    // 10) создаем токены
+    // 6) создаем токены
     const refreshToken = await this.createAndStoreRefreshToken(user.id, meta);
     const accessToken = await this.buildAccessToken(
       user.id,
@@ -218,6 +228,9 @@ export class AuthService {
       tokens: { accessToken, refreshToken: refreshToken },
     };
   }
+
+  // 6) Опиционально. Можно удалить старые записи, или сохранить для аудита.
+  // await this.loginAttemptService.deleteOlderThan(10); // оставляет все записи за последние 10 дней
 
   async refresh(
     rawRefreshToken: string,
