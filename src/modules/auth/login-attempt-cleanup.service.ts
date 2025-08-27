@@ -10,12 +10,11 @@ export class LoginAttemptCleanupService {
 
   @Cron(CronExpression.EVERY_3_HOURS)
   async handleCleanup() {
-    console.log('handleCleanup');
     const result = await this.loginAttemptService.deleteOlderThan(0);
-    this.logger.log(`Удалены записи попыток авторизоваться`);
+    console.log(`Удалено ${result.count} попыток авторизоваться`);
 
     if (result.count > 0) {
-      this.logger.log(`Удалено ${result.count} просроченных refresh-токенов`);
+      this.logger.log(`Удалено ${result.count} попыток авторизоваться`);
     }
   }
 }
