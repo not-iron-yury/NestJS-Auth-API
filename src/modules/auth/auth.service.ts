@@ -10,6 +10,7 @@ import type { Role } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
+import { RedisService } from 'src/common/redis/redis.service';
 import { TooManyRequestsException } from 'src/exceptions/TooManyRequestsException';
 import { EmailConfirmService } from 'src/modules/auth/email-confirm.service';
 import { LoginAttemptReason } from 'src/modules/auth/enums/login-attempt-reason.enum';
@@ -26,6 +27,7 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly emailConfirmService: EmailConfirmService,
     private readonly loginAttemptService: LoginAttemptService,
+    private readonly redis: RedisService,
   ) {}
 
   private async buildAccessToken(userId: number, email: string, role: Role) {
@@ -121,15 +123,33 @@ export class AuthService {
     password: string,
     meta?: { ip?: string; deviceInfo?: string },
   ) {
-    // 1) определяем константы: лимит попыток, вермя блокировки, временное окно
+    // константы для работы с email
     const maxAttempt = Number(this.config.get('LOGIN_MAX_ATTEMPTS') ?? 5);
     const lockMin = Number(this.config.get('LOCK_TIME_MINUTES') ?? 15);
     const windowMin = Number(
       this.config.get('LOGIN_ATTEMPT_WINDOW_MINUTES') ?? 15,
     );
 
-    //  2) пытаемся найти пользователя (нужен для проверки lockedUntil и записи userId в лог)
+    // константы для работы с IP
+    const ip = meta?.ip || 'unknown';
+    const ipWindowSec =
+      Number(this.config.get('LOGIN_IP_WINDOW_MINUTES') ?? 15) * 60;
+    const ipLockSec =
+      Number(this.config.get('LOGIN_IP_LOCK_MINUTES') ?? 15) * 60;
+    const ipMaxAttempts = Number(
+      this.config.get('LOGIN_MAX_ATTEMPTS_BY_IP') ?? 50,
+    );
+
+    // 1)  проверяем, заблокирован ли IP
+    if (await this.redis.isIpBlocked(ip)) {
+      throw new TooManyRequestsException(
+        'Слишком много запросов с вашего IP. Попробуйте позже.',
+      );
+    }
+
+    //  2) ищем пользователя (нужен для проверки lockedUntil и записи userId в лог)
     const user = await this.prisma.$transaction(async (tx: PrismaService) => {
+      // пытаемся найти
       const existing = await tx.user.findUnique({ where: { email } });
       //  если не найден - записываем неудачную попытку входа (без userID)
       if (!existing) {
@@ -151,6 +171,15 @@ export class AuthService {
 
     //  3) если пользователь не найден
     if (!user) {
+      const ipFails = await this.redis.incrFail(ip, ipWindowSec); // увеличиваем счетчик неудачных попыток для IP
+
+      if (ipFails >= ipMaxAttempts) {
+        await this.redis.blockIp(ip, ipLockSec); // если превышен лимит попыток для IP - блокируем по IP
+        throw new TooManyRequestsException(
+          'Слишком много запросов с вашего IP. Попробуйте позже.',
+        );
+      }
+
       throw new UnauthorizedException('Неверные учетные данные');
     }
 
@@ -166,6 +195,7 @@ export class AuthService {
 
     // 5-1) если пароль не валидный
     if (!isValidPassword) {
+      // работа с email
       await this.prisma.$transaction(async (tx) => {
         //  записываем попытку входа (c userId)
         await tx.loginAttempt.create({
@@ -202,10 +232,21 @@ export class AuthService {
           });
         }
       });
+
+      // работа с IP
+      const ipFails = await this.redis.incrFail(ip, ipWindowSec); // увеличиваем счетчик неудачных попыток для IP
+      if (ipFails >= ipMaxAttempts) {
+        await this.redis.blockIp(ip, ipLockSec); // если превышен лимит попыток для IP - блокируем по IP
+        throw new TooManyRequestsException(
+          'Слишком много запросов с вашего IP. Попробуйте позже.',
+        );
+      }
+
       throw new UnauthorizedException('Неправильные данные');
     }
 
-    // 5-2) если пароль валидный - записываем успешную попытку входа
+    // 5-2) если пароль валидный
+    // записываем успешную попытку входа
     await this.loginAttemptService.recordAttempt({
       email,
       userId: user.id,
@@ -214,6 +255,8 @@ export class AuthService {
       success: true,
       reason: LoginAttemptReason.OK,
     });
+    // сбрасываем счетчик неудачных попыток авторизоваться для текущего IP
+    await this.redis.delFail(ip);
 
     // 6) создаем токены
     const refreshToken = await this.createAndStoreRefreshToken(user.id, meta);
@@ -228,9 +271,6 @@ export class AuthService {
       tokens: { accessToken, refreshToken: refreshToken },
     };
   }
-
-  // 6) Опиционально. Можно удалить старые записи, или сохранить для аудита.
-  // await this.loginAttemptService.deleteOlderThan(10); // оставляет все записи за последние 10 дней
 
   async refresh(
     rawRefreshToken: string,

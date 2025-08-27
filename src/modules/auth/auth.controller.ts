@@ -21,6 +21,11 @@ export class AuthController {
     private readonly passwordResetSevice: PasswordResetSevice,
   ) {}
 
+  @Get('ping')
+  ping() {
+    return 'pong';
+  }
+
   @Post('register')
   async register(
     @Body() dto: RegisterDto,
