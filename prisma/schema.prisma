@@ -31,6 +31,7 @@ model User {
 model RefreshToken {
   id          Int      @id @default(autoincrement())
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId    String   @db.Uuid
   userId      Int
   token       String   @unique // хэш токена, НЕ сырой токен
   createdAt   DateTime @default(now())
@@ -40,6 +41,7 @@ model RefreshToken {
   deviceInfo  String?
 
   @@index([userId])
+  @@index([userId, deviceId])
   @@map("refresh_tokens")
 }
 
