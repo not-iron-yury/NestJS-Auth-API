@@ -33,13 +33,13 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
-    const { user, tokens } = await this.authService.register(
+    const { user, tokens, deviceId } = await this.authService.register(
       dto.password,
       dto.email,
       meta,
     );
     setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token через куку
-    return { user, access_token: tokens.accessToken };
+    return { user, access_token: tokens.accessToken, deviceId };
   }
 
   @Post('login')
@@ -49,13 +49,13 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
-    const { user, tokens } = await this.authService.login(
+    const { user, tokens, deviceId } = await this.authService.login(
       dto.email,
       dto.password,
       meta,
     );
     setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token через куку
-    return { user, access_token: tokens.accessToken };
+    return { user, access_token: tokens.accessToken, deviceId };
   }
 
   @Post('refresh')
@@ -72,9 +72,12 @@ export class AuthController {
 
     // revok старого refresh и получение новой пары
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
-    const { tokens } = await this.authService.refresh(refreshToken, meta);
+    const { tokens, deviceId } = await this.authService.refresh(
+      refreshToken,
+      meta,
+    );
     setRefreshTokenCookie(res, tokens.refreshToken); // готовим cookie для res
-    return { access_token: tokens.accessToken }; // refresh_token передаем через куку
+    return { access_token: tokens.accessToken, deviceId }; // refresh_token передаем через куку
   }
 
   @Post('logout')

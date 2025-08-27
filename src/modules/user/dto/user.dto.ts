@@ -16,6 +16,9 @@ export class UserDto {
   @Exclude()
   updatedAt: Date;
 
+  @Exclude()
+  lockedUntil: null | Date;
+
   constructor(partial: Partial<UserDto>) {
     Object.assign(this, partial);
   }

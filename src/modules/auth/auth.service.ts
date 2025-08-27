@@ -16,6 +16,7 @@ import { EmailConfirmService } from 'src/modules/auth/email-confirm.service';
 import { LoginAttemptReason } from 'src/modules/auth/enums/login-attempt-reason.enum';
 import { LoginAttemptService } from 'src/modules/auth/login-attempt.service';
 import { UserDto } from 'src/modules/user/dto/user.dto';
+import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HmacSha256Hex } from '../../utils/crypto';
 
@@ -30,13 +31,14 @@ export class AuthService {
     private readonly redis: RedisService,
   ) {}
 
-  private async buildAccessToken(userId: number, email: string, role: Role) {
+  private async createAccessToken(userId: number, email: string, role: Role) {
     const payload = { sub: userId, email, role };
     return await this.jwt.signAsync(payload);
   }
 
   private async createAndStoreRefreshToken(
     userId: number,
+    deviceId: string,
     meta?: { ip?: string; deviceInfo?: string },
     tx = this.prisma, // можно передавать PrismaTransactionClient для транзакции
   ) {
@@ -53,6 +55,7 @@ export class AuthService {
     // сохраняем refreshToken в БД
     await tx.refreshToken.create({
       data: {
+        deviceId,
         userId,
         token: hashedToken,
         expiresAt,
@@ -69,7 +72,11 @@ export class AuthService {
     email: string,
     meta?: { ip?: string; deviceInfo?: string },
   ) {
+    // хэш пароля
     const hash = await bcrypt.hash(password, 10);
+
+    // генерация deviceId
+    const deviceId = uuidv4();
 
     try {
       const { user, refreshToken } = await this.prisma.$transaction(
@@ -83,6 +90,7 @@ export class AuthService {
           // сохраняем refreshToken в БД
           const refreshToken = await this.createAndStoreRefreshToken(
             user.id,
+            deviceId,
             meta,
             tx, // все запросы, выполненные через объект tx, попадают внутрь общей транзакции
           );
@@ -93,7 +101,7 @@ export class AuthService {
       );
 
       // создаем accessToken
-      const accessToken = await this.buildAccessToken(
+      const accessToken = await this.createAccessToken(
         user.id,
         user.email,
         user.role,
@@ -106,6 +114,7 @@ export class AuthService {
       return {
         user: new UserDto(user),
         tokens: { accessToken, refreshToken },
+        deviceId,
       };
     } catch (error) {
       if (
@@ -259,8 +268,13 @@ export class AuthService {
     await this.redis.delFail(ip);
 
     // 6) создаем токены
-    const refreshToken = await this.createAndStoreRefreshToken(user.id, meta);
-    const accessToken = await this.buildAccessToken(
+    const deviceId = uuidv4(); // генерация deviceId
+    const refreshToken = await this.createAndStoreRefreshToken(
+      user.id,
+      deviceId,
+      meta,
+    );
+    const accessToken = await this.createAccessToken(
       user.id,
       user.email,
       user.role,
@@ -269,6 +283,7 @@ export class AuthService {
     return {
       user: new UserDto(user),
       tokens: { accessToken, refreshToken: refreshToken },
+      deviceId,
     };
   }
 
@@ -317,13 +332,15 @@ export class AuthService {
       });
 
       // новый refresh (сырой в переменную, хэшированный в БД)
+      const deviceId = uuidv4();
       const newRawRefres = await this.createAndStoreRefreshToken(
         existing.userId,
+        deviceId,
         meta,
         tx,
       );
       // новый access
-      const newAccess = await this.buildAccessToken(
+      const newAccess = await this.createAccessToken(
         existing.user.id,
         existing.user.email,
         existing.user.role,
@@ -335,6 +352,7 @@ export class AuthService {
           accessToken: newAccess,
           refreshToken: newRawRefres,
         },
+        deviceId,
       };
     };
     const result = await this.prisma.$transaction(updateRefreshToken);
