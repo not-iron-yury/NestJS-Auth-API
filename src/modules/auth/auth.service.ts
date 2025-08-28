@@ -38,10 +38,12 @@ export class AuthService {
 
   private async createAndStoreRefreshToken(
     userId: number,
-    deviceId: string,
     meta?: { ip?: string; deviceInfo?: string },
     tx = this.prisma, // можно передавать PrismaTransactionClient для транзакции
   ) {
+    // генерация deviceId
+    const deviceId = uuidv4();
+
     // генерация refresh токена
     const rawToken = randomBytes(40).toString('hex');
     const hashedToken = HmacSha256Hex(rawToken);
@@ -75,9 +77,6 @@ export class AuthService {
     // хэш пароля
     const hash = await bcrypt.hash(password, 10);
 
-    // генерация deviceId
-    const deviceId = uuidv4();
-
     try {
       const { user, refreshToken } = await this.prisma.$transaction(
         // передаем в prisma.$transaction асинхронную функцию с запросами к БД
@@ -90,7 +89,6 @@ export class AuthService {
           // сохраняем refreshToken в БД
           const refreshToken = await this.createAndStoreRefreshToken(
             user.id,
-            deviceId,
             meta,
             tx, // все запросы, выполненные через объект tx, попадают внутрь общей транзакции
           );
@@ -114,7 +112,6 @@ export class AuthService {
       return {
         user: new UserDto(user),
         tokens: { accessToken, refreshToken },
-        deviceId,
       };
     } catch (error) {
       if (
@@ -268,12 +265,7 @@ export class AuthService {
     await this.redis.delFail(ip);
 
     // 6) создаем токены
-    const deviceId = uuidv4(); // генерация deviceId
-    const refreshToken = await this.createAndStoreRefreshToken(
-      user.id,
-      deviceId,
-      meta,
-    );
+    const refreshToken = await this.createAndStoreRefreshToken(user.id, meta);
     const accessToken = await this.createAccessToken(
       user.id,
       user.email,
@@ -283,7 +275,6 @@ export class AuthService {
     return {
       user: new UserDto(user),
       tokens: { accessToken, refreshToken: refreshToken },
-      deviceId,
     };
   }
 
@@ -332,10 +323,8 @@ export class AuthService {
       });
 
       // новый refresh (сырой в переменную, хэшированный в БД)
-      const deviceId = uuidv4();
       const newRawRefres = await this.createAndStoreRefreshToken(
         existing.userId,
-        deviceId,
         meta,
         tx,
       );
@@ -352,7 +341,6 @@ export class AuthService {
           accessToken: newAccess,
           refreshToken: newRawRefres,
         },
-        deviceId,
       };
     };
     const result = await this.prisma.$transaction(updateRefreshToken);
@@ -364,21 +352,22 @@ export class AuthService {
       throw new BadRequestException('Refresh token обязателен');
     }
 
+    // 1) хэшируем полученный сырой токен и проверяем его наличие в БД
     const hashed = HmacSha256Hex(rawRefreshToken);
     const existing = await this.prisma.refreshToken.findUnique({
       where: { token: hashed },
     });
 
-    // если не найден
+    // 2) если не найден
     if (!existing) {
       throw new UnauthorizedException('Неправильный refresh token');
     }
-    // если уже отозван
+    // 3) если уже отозван
     if (existing.revoked) {
       return; // ничего не делаем, т.к. токен уже отозван
     }
 
-    // ревок старого токена
+    // 4) отзываем токен
     await this.prisma.refreshToken.update({
       where: { token: hashed },
       data: { revoked: true },

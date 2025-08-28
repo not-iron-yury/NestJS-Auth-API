@@ -1,14 +1,25 @@
-import { Body, Controller, Get, Post, Query, Req, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 import { AuthService } from 'src/modules/auth/auth.service';
 import { LoginDto } from 'src/modules/auth/dto/login.dto';
+import { LogoutDto } from 'src/modules/auth/dto/logout.dto';
 import { RefreshDto } from 'src/modules/auth/dto/refresh.dto';
 import { RegisterDto } from 'src/modules/auth/dto/register.dto';
 import { RequestEmailVerificationDto } from 'src/modules/auth/dto/request-email-verification.dto';
 import { RequestPasswordResetDto } from 'src/modules/auth/dto/request-password-reset.dto';
 import { ResetPasswordDto } from 'src/modules/auth/dto/reset-password.dto';
 import { EmailConfirmService } from 'src/modules/auth/email-confirm.service';
+import { JwtAuthGuard } from 'src/modules/auth/guards/jwt.guard';
 import { PasswordResetSevice } from 'src/modules/auth/password-reset.service';
 import { setRefreshTokenCookie } from '../../utils/set-refresh-token-cookie';
 
@@ -33,13 +44,13 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
-    const { user, tokens, deviceId } = await this.authService.register(
+    const { user, tokens } = await this.authService.register(
       dto.password,
       dto.email,
       meta,
     );
     setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token через куку
-    return { user, access_token: tokens.accessToken, deviceId };
+    return { user, access_token: tokens.accessToken };
   }
 
   @Post('login')
@@ -49,13 +60,13 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
-    const { user, tokens, deviceId } = await this.authService.login(
+    const { user, tokens } = await this.authService.login(
       dto.email,
       dto.password,
       meta,
     );
     setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token через куку
-    return { user, access_token: tokens.accessToken, deviceId };
+    return { user, access_token: tokens.accessToken };
   }
 
   @Post('refresh')
@@ -72,17 +83,15 @@ export class AuthController {
 
     // revok старого refresh и получение новой пары
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
-    const { tokens, deviceId } = await this.authService.refresh(
-      refreshToken,
-      meta,
-    );
+    const { tokens } = await this.authService.refresh(refreshToken, meta);
     setRefreshTokenCookie(res, tokens.refreshToken); // готовим cookie для res
-    return { access_token: tokens.accessToken, deviceId }; // refresh_token передаем через куку
+    return { access_token: tokens.accessToken }; // refresh_token передаем через куку
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('logout')
   async logout(
-    @Body() dto: RefreshDto,
+    @Body() dto: LogoutDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
