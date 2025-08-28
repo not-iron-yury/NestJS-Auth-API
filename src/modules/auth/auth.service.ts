@@ -375,4 +375,17 @@ export class AuthService {
 
     return;
   }
+
+  async getSessions(userId: number) {
+    return this.prisma.refreshToken.findMany({
+      where: { userId, revoked: false },
+      select: {
+        id: true,
+        deviceId: true,
+        deviceInfo: true,
+        createdAt: true,
+        expiresAt: true,
+      },
+    });
+  }
 }

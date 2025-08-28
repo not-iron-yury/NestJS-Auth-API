@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
+import { CurrentUser } from 'src/decorators/current-user.decorator';
 import { AuthService } from 'src/modules/auth/auth.service';
 import { LoginDto } from 'src/modules/auth/dto/login.dto';
 import { LogoutDto } from 'src/modules/auth/dto/logout.dto';
@@ -88,8 +89,8 @@ export class AuthController {
     return { access_token: tokens.accessToken }; // refresh_token передаем через куку
   }
 
-  @UseGuards(JwtAuthGuard)
   @Post('logout')
+  @UseGuards(JwtAuthGuard)
   async logout(
     @Body() dto: LogoutDto,
     @Req() req: Request,
@@ -101,6 +102,12 @@ export class AuthController {
     await this.authService.revok(refreshToken); // revok refresh токена
     res.clearCookie('refresh_token');
     return { message: 'Logout done' };
+  }
+
+  @Get('sessions')
+  @UseGuards(JwtAuthGuard)
+  async getSessions(@CurrentUser('id') userId: number) {
+    return this.authService.getSessions(userId); // возвр. массив объектов описывающих сессии
   }
 
   // валидация ссылки подтверждения (в письме) и активация нового пользователя в случае успеха
