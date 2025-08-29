@@ -45,13 +45,14 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
-    const { user, tokens } = await this.authService.register(
+    const { user, tokens, deviceId } = await this.authService.register(
       dto.password,
       dto.email,
+      dto.deviceId, // если на клиенте сохранен id от прошлой сессии
       meta,
     );
     setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token через куку
-    return { user, access_token: tokens.accessToken };
+    return { user, access_token: tokens.accessToken, deviceId };
   }
 
   @Post('login')
@@ -61,13 +62,14 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
-    const { user, tokens } = await this.authService.login(
+    const { user, tokens, deviceId } = await this.authService.login(
       dto.email,
       dto.password,
+      dto.deviceId, // если на клиенте сохранен id от прошлой сессии
       meta,
     );
-    setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token через куку
-    return { user, access_token: tokens.accessToken };
+    setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token через куку, если web
+    return { user, access_token: tokens.accessToken, deviceId };
   }
 
   @Post('refresh')
@@ -75,12 +77,10 @@ export class AuthController {
     @Body() dto: RefreshDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-    // passthrough: true - позволяет передавать HTTP-заголовки, куки
-    // и статус-коды непосредственно клиенту без дополнительной обработки промежуточными слоями
+    // passthrough: true - позволяет передавать cookies клиенту без дополнительной обработки
   ) {
-    // получаем refresh токен из тела запроса или cookies
     const refreshToken =
-      dto.refreshToken || (req.cookies?.refresh_token as string);
+      dto.refreshToken || (req.cookies?.refresh_token as string); // получаем refresh токен из тела запроса или cookies
 
     // revok старого refresh и получение новой пары
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
@@ -93,17 +93,14 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async logout(
     @Body() dto: LogoutDto,
-    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const refreshToken =
-      dto.refreshToken || (req.cookies?.refresh_token as string);
-
-    await this.authService.revok(refreshToken); // revok refresh токена
-    res.clearCookie('refresh_token');
+    await this.authService.revok(dto.deviceId); // отзыв всех токенов выданных устройству
+    res.clearCookie('refresh_token'); // сносим refreshToken из куки
     return { message: 'Logout done' };
   }
 
+  // список все активных сессий пользователя
   @Get('sessions')
   @UseGuards(JwtAuthGuard)
   async getSessions(@CurrentUser('id') userId: number) {
