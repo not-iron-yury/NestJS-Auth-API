@@ -11,6 +11,7 @@ import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { RedisService } from 'src/common/redis/redis.service';
+import { ClientType } from 'src/common/types/client-type.enum';
 import { TooManyRequestsException } from 'src/exceptions/TooManyRequestsException';
 import { EmailConfirmService } from 'src/modules/auth/email-confirm.service';
 import { LoginAttemptReason } from 'src/modules/auth/enums/login-attempt-reason.enum';
@@ -39,6 +40,7 @@ export class AuthService {
   private async createAndStoreRefreshToken(
     userId: number,
     deviceId: string,
+    clientType: ClientType,
     meta?: { ip?: string; deviceInfo?: string },
     tx = this.prisma,
   ) {
@@ -61,6 +63,7 @@ export class AuthService {
         expiresAt,
         createdByIp: meta?.ip || null,
         deviceInfo: meta?.deviceInfo || null,
+        clientType,
       },
     });
 
@@ -71,6 +74,7 @@ export class AuthService {
     password: string,
     email: string,
     deviceId: string = uuidv4(), // получаем ранее созданный от клиента или генерируем новый
+    clientType: ClientType,
     meta?: { ip?: string; deviceInfo?: string },
   ) {
     // хэш пароля
@@ -89,6 +93,7 @@ export class AuthService {
           const refreshToken = await this.createAndStoreRefreshToken(
             user.id,
             deviceId,
+            clientType,
             meta,
             tx, // все запросы, выполненные через объект tx, попадают внутрь общей транзакции
           );
@@ -129,6 +134,7 @@ export class AuthService {
     email: string,
     password: string,
     deviceId: string = uuidv4(), // получаем ранее созданный от клиента или генерируем новый
+    clientType: ClientType,
     meta?: { ip?: string; deviceInfo?: string },
   ) {
     // константы для работы с email
@@ -270,6 +276,7 @@ export class AuthService {
     const refreshToken = await this.createAndStoreRefreshToken(
       user.id,
       deviceId,
+      clientType,
       meta,
     );
     const accessToken = await this.createAccessToken(
@@ -287,6 +294,7 @@ export class AuthService {
 
   async refresh(
     rawRefreshToken: string,
+    clientType: ClientType,
     meta?: { ip?: string; deviceInfo?: string },
   ) {
     if (!rawRefreshToken) {
@@ -325,6 +333,7 @@ export class AuthService {
       const newRawRefres = await this.createAndStoreRefreshToken(
         existing.userId,
         existing.deviceId,
+        clientType,
         meta,
         tx,
       );

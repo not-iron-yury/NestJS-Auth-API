@@ -39,6 +39,7 @@ model RefreshToken {
   revoked     Boolean  @default(false)
   createdByIp String?
   deviceInfo  String?
+  clientType  String
 
   @@index([userId])
   @@index([userId, deviceId])

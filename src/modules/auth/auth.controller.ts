@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Post,
   Query,
   Req,
@@ -10,6 +11,8 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
+import { ClientTypeGuard } from 'src/common/guards/client-type.guard';
+import { ClientType } from 'src/common/types/client-type.enum';
 import { CurrentUser } from 'src/decorators/current-user.decorator';
 import { AuthService } from 'src/modules/auth/auth.service';
 import { LoginDto } from 'src/modules/auth/dto/login.dto';
@@ -39,54 +42,85 @@ export class AuthController {
   }
 
   @Post('register')
+  @UseGuards(ClientTypeGuard)
   async register(
     @Body() dto: RegisterDto,
+    @Headers('x-client-type') clientType: ClientType,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
+
     const { user, tokens, deviceId } = await this.authService.register(
       dto.password,
       dto.email,
       dto.deviceId, // если на клиенте сохранен id от прошлой сессии
+      clientType,
       meta,
     );
-    setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token через куку
-    return { user, access_token: tokens.accessToken, deviceId };
+
+    if (clientType === ClientType.WEB) {
+      setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token через куку, если web
+      return { user, access_token: tokens.accessToken, deviceId };
+    } else {
+      return { user, tokens, deviceId };
+    }
   }
 
   @Post('login')
+  @UseGuards(ClientTypeGuard)
   async login(
     @Body() dto: LoginDto,
+    @Headers('x-client-type') clientType: ClientType,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
+
     const { user, tokens, deviceId } = await this.authService.login(
       dto.email,
       dto.password,
       dto.deviceId, // если на клиенте сохранен id от прошлой сессии
+      clientType,
       meta,
     );
-    setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token через куку, если web
-    return { user, access_token: tokens.accessToken, deviceId };
+
+    if (clientType === ClientType.WEB) {
+      setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token через куку, если web
+      return { user, access_token: tokens.accessToken, deviceId };
+    } else {
+      return { user, tokens, deviceId };
+    }
   }
 
   @Post('refresh')
+  @UseGuards(ClientTypeGuard)
   async refresh(
     @Body() dto: RefreshDto,
+    @Headers('x-client-type') clientType: ClientType,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
     // passthrough: true - позволяет передавать cookies клиенту без дополнительной обработки
   ) {
     const refreshToken =
       dto.refreshToken || (req.cookies?.refresh_token as string); // получаем refresh токен из тела запроса или cookies
-
-    // revok старого refresh и получение новой пары
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
-    const { tokens } = await this.authService.refresh(refreshToken, meta);
-    setRefreshTokenCookie(res, tokens.refreshToken); // готовим cookie для res
-    return { access_token: tokens.accessToken }; // refresh_token передаем через куку
+
+    const { tokens } = await this.authService.refresh(
+      refreshToken,
+      clientType,
+      meta,
+    ); // revok старого refresh и получение новой пары
+
+    if (clientType === ClientType.WEB) {
+      setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token передаем через куку, если web
+      return { access_token: tokens.accessToken };
+    } else {
+      return {
+        access_token: tokens.accessToken,
+        refresh_token: tokens.refreshToken,
+      };
+    }
   }
 
   @Post('logout')
