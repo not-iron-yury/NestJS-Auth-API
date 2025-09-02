@@ -1,14 +1,14 @@
 import {
-  IsEmail,
   IsOptional,
+  IsPhoneNumber,
   IsString,
   IsUUID,
   MinLength,
 } from 'class-validator';
 
-export class RegisterDto {
-  @IsEmail()
-  email: string;
+export class RegisterByPhoneDto {
+  @IsPhoneNumber('RU', { message: 'Не валидный номер телефона для RU региона' })
+  phone!: string;
 
   @IsString()
   @MinLength(6)
