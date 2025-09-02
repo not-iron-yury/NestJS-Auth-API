@@ -7,15 +7,37 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum IdentityType {
+  EMAIL
+  PHONE
+  OAUTH
+}
+
 enum Role {
   ADMIN
   MANAGER
   USER
 }
 
+model Identity {
+  id        Int          @id @default(autoincrement())
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int
+  type      IdentityType
+  value     String
+  verified  Boolean      @default(false)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@unique([type, value]) // гарантирует уникальность пары (type + value)
+  @@index([userId])
+  @@map("identities")
+}
+
 model User {
   id                     Int                      @id @default(autoincrement())
-  email                  String                   @unique
+  email                  String?                  @unique
+  phone                  String?                  @unique
   hash                   String
   role                   Role                     @default(USER)
   isActive               Boolean                  @default(false)
@@ -26,6 +48,7 @@ model User {
   EmailVerificationToken EmailVerificationToken[]
   PasswordResetToken     PasswordResetToken[]
   LoginAttempt           LoginAttempt[]
+  Identity               Identity[]
 }
 
 model RefreshToken {
