@@ -3,8 +3,9 @@ import { Exclude } from 'class-transformer';
 
 export class UserDto {
   id: number;
-  email: string;
-  role: Role; // Prisma-тип
+  email?: string | null;
+  phone?: string | null;
+  role: Role;
   isActive: boolean;
 
   @Exclude() // гарантирует, что данное поле не будет сериализовано при преобразовании объекта в JSON (или другое представление)

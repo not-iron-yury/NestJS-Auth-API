@@ -8,9 +8,11 @@ import { EmailConfirmService } from 'src/modules/auth/email-confirm.service';
 import { LoginAttemptCleanupService } from 'src/modules/auth/login-attempt-cleanup.service';
 import { LoginAttemptService } from 'src/modules/auth/login-attempt.service';
 import { PasswordResetSevice } from 'src/modules/auth/password-reset.service';
+import { PhoneConfirmService } from 'src/modules/auth/phone-confirm.service';
 import { RefreshTokenCleanupService } from 'src/modules/auth/refresh-token-cleanup.service';
 import { JwtStrategy } from 'src/modules/auth/strategies/jwt.strategy';
 import { MailModule } from 'src/modules/mail/mail.module';
+import { PhoneModule } from 'src/modules/phone/phone.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 
 @Module({
@@ -38,6 +40,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
     }),
     PrismaModule,
     MailModule,
+    PhoneModule,
   ],
   controllers: [AuthController],
   providers: [
@@ -45,6 +48,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
     JwtStrategy,
     RefreshTokenCleanupService,
     EmailConfirmService,
+    PhoneConfirmService,
     PasswordResetSevice,
     LoginAttemptService,
     LoginAttemptCleanupService,

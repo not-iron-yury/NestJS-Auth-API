@@ -15,6 +15,7 @@ import { ClientTypeGuard } from 'src/common/guards/client-type.guard';
 import { ClientType } from 'src/common/types/client-type.enum';
 import { CurrentUser } from 'src/decorators/current-user.decorator';
 import { AuthService } from 'src/modules/auth/auth.service';
+import { ConfirmPhoneDto } from 'src/modules/auth/dto/confirm-phone.dto';
 import { LoginByEmailDto } from 'src/modules/auth/dto/login-by-email.dto';
 import { LoginByPhoneDto } from 'src/modules/auth/dto/login-by-phone.dto';
 import { LogoutDto } from 'src/modules/auth/dto/logout.dto';
@@ -27,6 +28,7 @@ import { ResetPasswordDto } from 'src/modules/auth/dto/reset-password.dto';
 import { EmailConfirmService } from 'src/modules/auth/email-confirm.service';
 import { JwtAuthGuard } from 'src/modules/auth/guards/jwt.guard';
 import { PasswordResetSevice } from 'src/modules/auth/password-reset.service';
+import { PhoneConfirmService } from 'src/modules/auth/phone-confirm.service';
 import { setRefreshTokenCookie } from '../../utils/set-refresh-token-cookie';
 
 @Controller('auth')
@@ -35,6 +37,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly config: ConfigService,
     private readonly emailConfirmService: EmailConfirmService,
+    private readonly phoneConfirmService: PhoneConfirmService,
     private readonly passwordResetSevice: PasswordResetSevice,
   ) {}
 
@@ -43,31 +46,6 @@ export class AuthController {
     res.status(200).json({ message: 'pong' });
   }
 
-  // @Post('register')
-  // @UseGuards(ClientTypeGuard)
-  // async register(
-  //   @Body() dto: RegisterByEmailDto | RegisterByPhoneDto,
-  //   @Headers('x-client-type') clientType: ClientType,
-  //   @Req() req: Request,
-  //   @Res({ passthrough: true }) res: Response,
-  // ) {
-  //   const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
-
-  //   const { user, tokens, deviceId } = await this.authService.register(
-  //     dto.password,
-  //     dto.email,
-  //     dto.deviceId, // если на клиенте сохранен id от прошлой сессии
-  //     clientType,
-  //     meta,
-  //   );
-
-  //   if (clientType === ClientType.WEB) {
-  //     setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token через куку, если web
-  //     return { user, access_token: tokens.accessToken, deviceId };
-  //   } else {
-  //     return { user, tokens, deviceId };
-  //   }
-  // }
   @Post('register/email')
   @UseGuards(ClientTypeGuard)
   async registerByEmail(
@@ -148,7 +126,7 @@ export class AuthController {
 
   @Post('login/phone')
   @UseGuards(ClientTypeGuard)
-  async LoginByPhone(
+  async loginByPhone(
     @Body() dto: LoginByPhoneDto,
     @Headers('x-client-type') clientType: ClientType,
     @Req() req: Request,
@@ -156,7 +134,7 @@ export class AuthController {
   ) {
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
 
-    const { user, tokens, deviceId } = await this.authService.LoginByPhone(
+    const { user, tokens, deviceId } = await this.authService.loginByPhone(
       dto.phone,
       dto.password,
       dto.deviceId, // если на клиенте сохранен id от прошлой сессии
@@ -243,6 +221,12 @@ export class AuthController {
     };
   }
 
+  // валидация SMS кода и активация нового пользователя в случае успеха
+  @Post('confirm-phone')
+  async confirmPhone(@Body() dto: ConfirmPhoneDto) {
+    return this.phoneConfirmService.confirmPhone(dto.userId, dto.code);
+  }
+
   // запрос на смену пароля
   @Post('request-password-reset')
   async requestPasswordReset(
@@ -253,7 +237,7 @@ export class AuthController {
     return await this.passwordResetSevice.requestPasswordReset(dto.email, meta);
   }
 
-  // валидация ссылки подтверждения (в письме) - опционально, сделано для фронта (показывать форму если valid:true )
+  // валидация ссылки подтверждения из письма - опционально, сделано для фронта (показывать форму если valid:true )
   @Get('verify-password-reset')
   async verifyResetToken(@Query('token') token: string) {
     return await this.passwordResetSevice.verifyResetToken(token);
