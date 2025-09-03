@@ -49,6 +49,7 @@ model User {
   PasswordResetToken     PasswordResetToken[]
   LoginAttempt           LoginAttempt[]
   Identity               Identity[]
+  PhoneVerificationToken PhoneVerificationToken[]
 }
 
 model RefreshToken {
@@ -82,6 +83,21 @@ model EmailVerificationToken {
 
   @@index([userId])
   @@map("email_verification_tokens")
+}
+
+model PhoneVerificationToken {
+  id          Int      @id @default(autoincrement())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      Int
+  token       String // хэш
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+  used        Boolean  @default(false)
+  createdByIp String?
+  deviceInfo  String?
+
+  @@unique([userId, token])
+  @@map("phone_verification_tokens")
 }
 
 model PasswordResetToken {
