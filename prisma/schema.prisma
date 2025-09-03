@@ -95,17 +95,18 @@ model PasswordResetToken {
 }
 
 model LoginAttempt {
-  id        Int      @id @default(autoincrement())
-  email     String?
-  userId    Int? // nullable: пользователь (с полученным email) может не существовать
-  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  ip        String?
-  userAgent String?
-  success   Boolean  @default(false)
-  reason    String?
-  createdAt DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  identifier String? // может быть email, phone, oauth
+  type       AuthType // enum: 'EMAIL' | 'PHONE' | 'OAUTH'
+  userId     Int? // nullable: пользователь может не существовать, если получен несуществующий identifier
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ip         String?
+  userAgent  String?
+  success    Boolean  @default(false)
+  reason     String?
+  createdAt  DateTime @default(now())
 
-  @@index([email, createdAt])
+  @@index([identifier, createdAt])
   @@index([userId, createdAt])
   @@map("login_attempts")
 }
