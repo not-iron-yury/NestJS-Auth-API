@@ -7,31 +7,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum IdentityType {
-  EMAIL
-  PHONE
-  OAUTH
-}
-
 enum Role {
   ADMIN
   MANAGER
   USER
-}
-
-model Identity {
-  id        Int          @id @default(autoincrement())
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId    Int
-  type      IdentityType
-  value     String
-  verified  Boolean      @default(false)
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-
-  @@unique([type, value]) // гарантирует уникальность пары (type + value)
-  @@index([userId])
-  @@map("identities")
 }
 
 model User {
@@ -48,7 +27,6 @@ model User {
   EmailVerificationToken EmailVerificationToken[]
   PasswordResetToken     PasswordResetToken[]
   LoginAttempt           LoginAttempt[]
-  Identity               Identity[]
   PhoneVerificationToken PhoneVerificationToken[]
 }
 
@@ -63,7 +41,7 @@ model RefreshToken {
   revoked     Boolean  @default(false)
   createdByIp String?
   deviceInfo  String?
-  clientType  String
+  clientType  String // web | mobile
 
   @@index([userId])
   @@index([userId, deviceId])
@@ -130,4 +108,10 @@ model LoginAttempt {
   @@index([email, createdAt])
   @@index([userId, createdAt])
   @@map("login_attempts")
+}
+
+enum AuthType {
+  EMAIL
+  PHONE
+  OAUTH
 }

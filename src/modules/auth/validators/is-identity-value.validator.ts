@@ -1,4 +1,4 @@
-import { IdentityType } from '@prisma/client';
+import { AuthType } from '@prisma/client';
 import {
   ValidationArguments,
   ValidatorConstraint,
@@ -14,7 +14,7 @@ export class IsIdentityValueValid implements ValidatorConstraintInterface {
     const obj = args.object as any;
 
     // 2) извлекаем тип идентификации и само значение
-    const type: IdentityType = obj.type;
+    const type: AuthType = obj.type;
     const value: string = obj.value;
 
     // 3) проверочка наличия идентификатора
@@ -22,11 +22,11 @@ export class IsIdentityValueValid implements ValidatorConstraintInterface {
 
     // 4) валидация значения идентификатора (в зависимости от его типа)
     switch (type) {
-      case IdentityType.EMAIL:
+      case AuthType.EMAIL:
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim().toLowerCase()); // простая, но практичная проверка email
-      case IdentityType.PHONE:
+      case AuthType.PHONE:
         return /^\+?[1-9]\d{6,14}$/.test(value.trim()); // +{country}{number}, 7-15 цифр (простая проверка)
-      case IdentityType.OAUTH:
+      case AuthType.OAUTH:
         return value.trim().length > 0; // для oauth значение может быть внешний id или email — просто проверяем непустую строку
       default:
         return false;
@@ -38,9 +38,9 @@ export class IsIdentityValueValid implements ValidatorConstraintInterface {
     const obj = args.object as any;
     if (!obj || !obj.type) return 'IsIdentityValue: неправильный идентификатор';
     switch (obj.type) {
-      case IdentityType.EMAIL:
+      case AuthType.EMAIL:
         return 'IsIdentityValue: некорректный адрес электронной почты';
-      case IdentityType.PHONE:
+      case AuthType.PHONE:
         return 'IsIdentityValue: некорректный номер телефона';
       default:
         return 'IsIdentityValue: некорректные идентификационные данные';
