@@ -27,7 +27,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   // проверка существования пользователя
   async validate(payload: JwtPayload) {
     const user = await this.prisma.user.findUnique({
-      where: { email: payload.email },
+      where: { id: payload.sub },
     });
 
     if (!user) {
@@ -35,7 +35,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     if (!user.isActive) {
-      throw new UnauthorizedException('Email не подтвержден');
+      throw new UnauthorizedException(
+        'Пользователь не подтвердил свои контакты',
+      );
     }
 
     // возвращаем объект, который попадёт в request.user

@@ -15,10 +15,12 @@ import { ClientTypeGuard } from 'src/common/guards/client-type.guard';
 import { ClientType } from 'src/common/types/client-type.enum';
 import { CurrentUser } from 'src/decorators/current-user.decorator';
 import { AuthService } from 'src/modules/auth/auth.service';
-import { LoginDto } from 'src/modules/auth/dto/login.dto';
+import { LoginByEmailDto } from 'src/modules/auth/dto/login-by-email.dto';
+import { LoginByPhoneDto } from 'src/modules/auth/dto/login-by-phone.dto';
 import { LogoutDto } from 'src/modules/auth/dto/logout.dto';
 import { RefreshDto } from 'src/modules/auth/dto/refresh.dto';
-import { RegisterDto } from 'src/modules/auth/dto/register.dto';
+import { RegisterByEmailDto } from 'src/modules/auth/dto/register-by-email.dto';
+import { RegisterByPhoneDto } from 'src/modules/auth/dto/register-by-phone.dto';
 import { RequestEmailVerificationDto } from 'src/modules/auth/dto/request-email-verification.dto';
 import { RequestPasswordResetDto } from 'src/modules/auth/dto/request-password-reset.dto';
 import { ResetPasswordDto } from 'src/modules/auth/dto/reset-password.dto';
@@ -37,23 +39,48 @@ export class AuthController {
   ) {}
 
   @Get('ping')
-  ping() {
-    return 'pong';
+  ping(@Res() res: Response) {
+    res.status(200).json({ message: 'pong' });
   }
 
-  @Post('register')
+  // @Post('register')
+  // @UseGuards(ClientTypeGuard)
+  // async register(
+  //   @Body() dto: RegisterByEmailDto | RegisterByPhoneDto,
+  //   @Headers('x-client-type') clientType: ClientType,
+  //   @Req() req: Request,
+  //   @Res({ passthrough: true }) res: Response,
+  // ) {
+  //   const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
+
+  //   const { user, tokens, deviceId } = await this.authService.register(
+  //     dto.password,
+  //     dto.email,
+  //     dto.deviceId, // если на клиенте сохранен id от прошлой сессии
+  //     clientType,
+  //     meta,
+  //   );
+
+  //   if (clientType === ClientType.WEB) {
+  //     setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token через куку, если web
+  //     return { user, access_token: tokens.accessToken, deviceId };
+  //   } else {
+  //     return { user, tokens, deviceId };
+  //   }
+  // }
+  @Post('register/email')
   @UseGuards(ClientTypeGuard)
-  async register(
-    @Body() dto: RegisterDto,
+  async registerByEmail(
+    @Body() dto: RegisterByEmailDto,
     @Headers('x-client-type') clientType: ClientType,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
 
-    const { user, tokens, deviceId } = await this.authService.register(
-      dto.password,
+    const { user, tokens, deviceId } = await this.authService.registerByEmail(
       dto.email,
+      dto.password,
       dto.deviceId, // если на клиенте сохранен id от прошлой сессии
       clientType,
       meta,
@@ -67,18 +94,70 @@ export class AuthController {
     }
   }
 
-  @Post('login')
+  @Post('register/phone')
   @UseGuards(ClientTypeGuard)
-  async login(
-    @Body() dto: LoginDto,
+  async registerByPhone(
+    @Body() dto: RegisterByPhoneDto,
     @Headers('x-client-type') clientType: ClientType,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
 
-    const { user, tokens, deviceId } = await this.authService.login(
+    const { user, tokens, deviceId } = await this.authService.registerByPhone(
+      dto.phone,
+      dto.password,
+      dto.deviceId, // если на клиенте сохранен id от прошлой сессии
+      clientType,
+      meta,
+    );
+
+    if (clientType === ClientType.WEB) {
+      setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token через куку, если web
+      return { user, access_token: tokens.accessToken, deviceId };
+    } else {
+      return { user, tokens, deviceId };
+    }
+  }
+
+  @Post('login/email')
+  @UseGuards(ClientTypeGuard)
+  async loginByEmail(
+    @Body() dto: LoginByEmailDto,
+    @Headers('x-client-type') clientType: ClientType,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
+
+    const { user, tokens, deviceId } = await this.authService.loginByEmail(
       dto.email,
+      dto.password,
+      dto.deviceId, // если на клиенте сохранен id от прошлой сессии
+      clientType,
+      meta,
+    );
+
+    if (clientType === ClientType.WEB) {
+      setRefreshTokenCookie(res, tokens.refreshToken); // refresh_token через куку, если web
+      return { user, access_token: tokens.accessToken, deviceId };
+    } else {
+      return { user, tokens, deviceId };
+    }
+  }
+
+  @Post('login/phone')
+  @UseGuards(ClientTypeGuard)
+  async LoginByPhone(
+    @Body() dto: LoginByPhoneDto,
+    @Headers('x-client-type') clientType: ClientType,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
+
+    const { user, tokens, deviceId } = await this.authService.LoginByPhone(
+      dto.phone,
       dto.password,
       dto.deviceId, // если на клиенте сохранен id от прошлой сессии
       clientType,
