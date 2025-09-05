@@ -15,6 +15,8 @@ import { ClientTypeGuard } from 'src/common/guards/client-type.guard';
 import { ClientType } from 'src/common/types/client-type.enum';
 import { CurrentUser } from 'src/decorators/current-user.decorator';
 import { AuthService } from 'src/modules/auth/auth.service';
+import { EmailConfirmService } from 'src/modules/auth/confirm-email.service';
+import { PhoneConfirmService } from 'src/modules/auth/confirm-phone.service';
 import { ConfirmPhoneDto } from 'src/modules/auth/dto/confirm-phone.dto';
 import { LoginByEmailDto } from 'src/modules/auth/dto/login-by-email.dto';
 import { LoginByPhoneDto } from 'src/modules/auth/dto/login-by-phone.dto';
@@ -22,13 +24,13 @@ import { LogoutDto } from 'src/modules/auth/dto/logout.dto';
 import { RefreshDto } from 'src/modules/auth/dto/refresh.dto';
 import { RegisterByEmailDto } from 'src/modules/auth/dto/register-by-email.dto';
 import { RegisterByPhoneDto } from 'src/modules/auth/dto/register-by-phone.dto';
-import { RequestEmailVerificationDto } from 'src/modules/auth/dto/request-email-verification.dto';
-import { RequestPasswordResetDto } from 'src/modules/auth/dto/request-password-reset.dto';
+import { RequestPasswordResetByEmailDto } from 'src/modules/auth/dto/request-password-reset-by-email.dto';
+import { RequestPasswordResetByPhoneDto } from 'src/modules/auth/dto/request-password-reset-by-phone.dto';
+import { RequestEmailVerificationDto } from 'src/modules/auth/dto/request-verification-email.dto';
+import { RequestPhoneVerificationDto } from 'src/modules/auth/dto/request-verification-phone.dto';
 import { ResetPasswordDto } from 'src/modules/auth/dto/reset-password.dto';
-import { EmailConfirmService } from 'src/modules/auth/email-confirm.service';
 import { JwtAuthGuard } from 'src/modules/auth/guards/jwt.guard';
 import { PasswordResetSevice } from 'src/modules/auth/password-reset.service';
-import { PhoneConfirmService } from 'src/modules/auth/phone-confirm.service';
 import { setRefreshTokenCookie } from '../../utils/set-refresh-token-cookie';
 
 @Controller('auth')
@@ -198,20 +200,21 @@ export class AuthController {
     return this.authService.getSessions(userId); // возвр. массив объектов описывающих сессии
   }
 
-  // валидация ссылки подтверждения (в письме) и активация нового пользователя в случае успеха
+  // валидация ссылки и активация нового пользователя (в случае успеха)
   @Get('confirm-email')
   async confirmEmail(@Query('token') token: string) {
     return this.emailConfirmService.confirmEmail(token);
   }
 
-  // запрос ссылки для подтверждения email
+  // для повторного запроса ссылки для подтверждения email
   @Post('email-verification')
-  async sendVerification(
-    @Body() dto: RequestEmailVerificationDto, // валидация на email, что б не делать лишние запросы к БД
+  async sendEmailVerification(
+    @Body() dto: RequestEmailVerificationDto,
     @Req() req: Request,
   ) {
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
-    const res = await this.emailConfirmService.sendEmailVerifikation(
+    // провека пользователя, генерация ссылки и отправка на email
+    const res = await this.emailConfirmService.sendEmailVerification(
       dto.email,
       meta,
     );
@@ -221,29 +224,69 @@ export class AuthController {
     };
   }
 
-  // валидация SMS кода и активация нового пользователя в случае успеха
+  // валидация SMS-кода и активация нового пользователя (в случае успеха)
   @Post('confirm-phone')
   async confirmPhone(@Body() dto: ConfirmPhoneDto) {
     return this.phoneConfirmService.confirmPhone(dto.userId, dto.code);
   }
 
-  // запрос на смену пароля
-  @Post('request-password-reset')
-  async requestPasswordReset(
-    @Body() dto: RequestPasswordResetDto,
+  // для повторного запроса SMS-кода для подтверждения номера телефона
+  @Post('phone-verification')
+  async sendPhoneVerifikation(
+    @Body() dto: RequestPhoneVerificationDto,
     @Req() req: Request,
   ) {
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
-    return await this.passwordResetSevice.requestPasswordReset(dto.email, meta);
+    // провека пользователя, генерация и отправка SMS
+    const res = await this.phoneConfirmService.sendPhoneVerifikation(
+      dto.phone,
+      meta,
+    );
+    return {
+      message: res.message,
+      info: res.code || 'В повторном подтверждении нет нобходимости',
+    };
   }
 
-  // валидация ссылки подтверждения из письма - опционально, сделано для фронта (показывать форму если valid:true )
+  // запрос на смену пароля по email (инициализация процесса замены пароля) - шаг 1
+  @Post('request-password-reset/email')
+  async RequestPasswordResetByEmail(
+    @Body() dto: RequestPasswordResetByEmailDto,
+    @Headers('x-client-type') clientType: ClientType,
+    @Req() req: Request,
+  ) {
+    const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
+    return await this.passwordResetSevice.RequestPasswordResetByEmail(
+      dto.email,
+      clientType,
+      meta,
+    );
+  }
+
+  // запрос на смену пароля по phone (инициализация процесса замены пароля)
+  @Post('request-password-reset/phone')
+  async RequestPasswordResetByPhone(
+    @Body() dto: RequestPasswordResetByPhoneDto,
+    @Headers('x-client-type') clientType: ClientType,
+    @Req() req: Request,
+  ) {
+    const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };
+    return await this.passwordResetSevice.RequestPasswordResetByPhone(
+      dto.phone,
+      clientType,
+      meta,
+    );
+  }
+
+  // валидация passwordResetToken: опционально для web, сделано для фронта (показывать форму если valid:true ) - шаг 1-1
   @Get('verify-password-reset')
-  async verifyResetToken(@Query('token') token: string) {
+  async verifyResetToken(
+    @Query('token') token: string,
+  ): Promise<{ valid: true }> {
     return await this.passwordResetSevice.verifyResetToken(token);
   }
 
-  // смена пароля (отправка нового пароля)
+  // передача токена для замены пароля и отправка нового пароля  - шаг 2
   @Post('reset-password')
   async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request) {
     const meta = { ip: req.ip, deviceInfo: req.headers['user-agent'] };

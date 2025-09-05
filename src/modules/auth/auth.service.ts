@@ -13,10 +13,10 @@ import { randomBytes } from 'crypto';
 import { RedisService } from 'src/common/redis/redis.service';
 import { ClientType } from 'src/common/types/client-type.enum';
 import { TooManyRequestsException } from 'src/exceptions/TooManyRequestsException';
-import { EmailConfirmService } from 'src/modules/auth/email-confirm.service';
+import { EmailConfirmService } from 'src/modules/auth/confirm-email.service';
+import { PhoneConfirmService } from 'src/modules/auth/confirm-phone.service';
 import { LoginAttemptReason } from 'src/modules/auth/enums/login-attempt-reason.enum';
 import { LoginAttemptService } from 'src/modules/auth/login-attempt.service';
-import { PhoneConfirmService } from 'src/modules/auth/phone-confirm.service';
 import { UserDto } from 'src/modules/user/dto/user.dto';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -102,7 +102,7 @@ export class AuthService {
 
       const accessToken = await this.createAccessToken(user.id, user.role);
 
-      await this.emailConfirmService.sendEmailVerifikation(email, meta);
+      await this.emailConfirmService.sendEmailVerification(email, meta);
 
       return {
         user: new UserDto(user),
@@ -150,7 +150,7 @@ export class AuthService {
 
       const accessToken = await this.createAccessToken(user.id, user.role);
 
-      await this.phoneConfirmService.sendVerifikationSms(phone, meta);
+      await this.phoneConfirmService.sendPhoneVerifikation(phone, meta);
 
       return {
         user: new UserDto(user),

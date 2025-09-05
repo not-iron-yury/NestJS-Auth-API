@@ -2,9 +2,11 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
+import { ClientType } from 'src/common/types/client-type.enum';
 import { MailService } from 'src/modules/mail/mail.service';
+import { PhoneService } from 'src/modules/phone/phone.service';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { HmacSha256Hex } from 'src/utils/crypto';
+import { generateSms, HmacSha256Hex } from 'src/utils/crypto';
 
 @Injectable()
 export class PasswordResetSevice {
@@ -13,12 +15,15 @@ export class PasswordResetSevice {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+
     private readonly mailService: MailService,
+    private readonly phoneService: PhoneService,
   ) {}
 
-  // Инициализация сброса пароля
-  async requestPasswordReset(
+  // Инициализация сброса пароля по email
+  async RequestPasswordResetByEmail(
     email: string,
+    clientType: ClientType,
     meta?: { ip?: string; deviceInfo?: string },
   ) {
     // 1) проверяем пользователя в БД
@@ -29,7 +34,7 @@ export class PasswordResetSevice {
     // 2) всегда! возвращаем success: true (без лишней информации)
     //    ошибку не выбрасываем - не палим, что полученный email отсутствует в БД
     //    продолжаем только если пользователь существует
-    if (!user) {
+    if (!user || !user.email) {
       this.logger.debug(
         `Запрос на сброс пароля для несуществующего email: ${email}`,
       );
@@ -63,6 +68,7 @@ export class PasswordResetSevice {
           expiresAt,
           createdByIp: meta?.ip,
           deviceInfo: meta?.deviceInfo,
+          clientType,
         },
       });
     });
@@ -72,14 +78,74 @@ export class PasswordResetSevice {
     const link = `${appUrl}/auth/verify-password-reset?token=${rawToken}`; // в ссылке именно сырой токен
 
     // 7) отправляем письмо (пока что эмуляция)
-    this.mailService.sendPasswordResetEmail(String(user.email), link, meta);
+    this.mailService.sendPasswordResetEmail(user.email, link, meta);
 
     // 8) настоящее подтверждение
+    return { success: true, token: rawToken };
+  }
+
+  // Инициализация сброса пароля по phone sms
+  async RequestPasswordResetByPhone(
+    phone: string,
+    clientType: ClientType,
+    meta?: { ip?: string; deviceInfo?: string },
+  ) {
+    // 1) проверяем пользователя в БД
+    const user = await this.prisma.user.findUnique({
+      where: { phone },
+    });
+
+    // 2) всегда! возвращаем success: true (без лишней информации)
+    //    ошибку не выбрасываем - не палим, что полученный номер телефона отсутствует в БД
+    //    продолжаем только если пользователь существует
+    if (!user || !user.phone) {
+      this.logger.debug(
+        `Запрос на сброс пароля для несуществующего номера телефона: ${phone}`,
+      );
+      return { success: true }; // фейковое подтверждение
+    }
+
+    // 3) генерируем сырой SMS-code и хэшируем его
+    const rawSmsCode = generateSms();
+    const token = HmacSha256Hex(rawSmsCode);
+
+    // 4) вычисляем expiresAt
+    const expiresAt = new Date();
+    expiresAt.setHours(
+      expiresAt.getHours() +
+        Number(this.config.get('PASSWORD_RESET_TTL_HOURS')) || 1,
+    );
+
+    // 5) создаем новый passwordResetToken и отменяем старые
+    await this.prisma.$transaction(async (tx) => {
+      // старые отмечаем как использованные
+      await tx.passwordResetToken.updateMany({
+        where: { userId: user.id, used: false },
+        data: { used: true, usedAt: new Date() },
+      });
+
+      // создаем новый
+      await tx.passwordResetToken.create({
+        data: {
+          userId: user.id,
+          token,
+          expiresAt,
+          createdByIp: meta?.ip,
+          deviceInfo: meta?.deviceInfo,
+          clientType,
+        },
+      });
+    });
+
+    // 6) отправляем SMS-код (эмуляция)
+    this.phoneService.sendPasswordResetPhone(user.phone, rawSmsCode);
+
+    // 7) настоящее подтверждение
     return { success: true };
   }
 
   // Проверка токена сброса пароля (наличие и действительность)
-  async verifyResetToken(token: string) {
+  async verifyResetToken(token: string): Promise<{ valid: true }> {
     // 1) хэшируем полученный токен
     const hashed = HmacSha256Hex(token);
 
