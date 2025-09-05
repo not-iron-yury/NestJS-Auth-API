@@ -89,6 +89,7 @@ model PasswordResetToken {
   usedAt      DateTime?
   createdByIp String?
   deviceInfo  String?
+  clientType  String // web | mobile
 
   @@index([userId])
   @@map("password_reset_tokens")
