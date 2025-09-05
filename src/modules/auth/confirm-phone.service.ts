@@ -12,13 +12,14 @@ export class PhoneConfirmService {
     private readonly phoneService: PhoneService,
   ) {}
 
-  async sendVerifikationSms(
+  // Генерирует новый PhoneVerificationToken и SMS, которые отправляются на phone пользователя
+  async sendPhoneVerifikation(
     phone: string,
     meta?: { ip?: string; deviceInfo?: string },
   ) {
     // 1) пробуем найти пользователя
     const user = await this.prisma.user.findUnique({ where: { phone } });
-    if (!user) {
+    if (!user || !user.phone) {
       throw new BadRequestException(
         'PhoneVerifikation: пользователь не найден',
       );
@@ -27,9 +28,9 @@ export class PhoneConfirmService {
     // 2) если пользователь уже активен
     if (user.isActive) return { message: 'Пользователь уже верифицирован' };
 
-    // 3) генерируем сырой phone code и хэшируем его
-    const rawCode = generateSms();
-    const hashedCode = HmacSha256Hex(rawCode);
+    // 3) генерируем сырой SMS-code и хэшируем его
+    const rawSmsCode = generateSms();
+    const token = HmacSha256Hex(rawSmsCode);
 
     // 4) вычисляем expiresAt
     const expiresAt = new Date();
@@ -37,19 +38,19 @@ export class PhoneConfirmService {
       expiresAt.getMinutes() + Number(this.config.get('SMS_TOKEN_TTL_HOURS')),
     );
 
-    // 5) сохраняем в БД новый хэш sms code и отменяем старые
+    // 5) сохраняем в БД новый хэш SMS-code и отменяем старые
     await this.prisma.$transaction(async (tx) => {
-      // маркируем все предыдущие токены пользователя как использованные (не действительные)
+      // отменяем все предыдущие SMS-коды
       await tx.phoneVerificationToken.updateMany({
         where: { userId: user.id, used: false },
         data: { used: true },
       });
 
-      // создаем новый sms code
+      // создаем новый SMS-код
       await tx.phoneVerificationToken.create({
         data: {
           userId: user.id,
-          token: hashedCode,
+          token,
           expiresAt,
           createdByIp: meta?.ip || null,
           deviceInfo: meta?.deviceInfo || null,
@@ -57,8 +58,11 @@ export class PhoneConfirmService {
       });
     });
 
-    // 6) отправка SMS (эмуляция) - вызываем MailService и просто выполняем логирование
-    this.phoneService.sendVerificationPhone(String(user.phone), rawCode);
+    // 6) отправка SMS (эмуляция)
+    this.phoneService.sendVerificationSMS(user.phone, rawSmsCode);
+
+    //
+    return { message: 'Verification SMS sent', code: rawSmsCode };
   }
 
   async confirmPhone(userId: number, code: string) {

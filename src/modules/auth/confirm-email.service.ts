@@ -13,13 +13,14 @@ export class EmailConfirmService {
     private readonly mailService: MailService,
   ) {}
 
-  async sendEmailVerifikation(
+  // Генерирует новый EmailVerificationToken и link, которые отправляются на email пользователя
+  async sendEmailVerification(
     email: string,
     meta?: { ip?: string; deviceInfo?: string },
   ) {
     // 1) получаем email пользователя
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user) {
+    if (!user || !user.email) {
       throw new BadRequestException('Пользователь с таким email не найден');
     }
 
@@ -61,12 +62,13 @@ export class EmailConfirmService {
     const link = `${appUrl}/auth/confirm-email?token=${rawToken}`; // в ссылке для подтверждения сырой токен
 
     // 7) отправка письма (эмуляция) - вызываем MailService и просто выполняем логирование
-    this.mailService.sendVerificationEmail(String(user.email), link, meta);
+    this.mailService.sendVerificationEmail(user.email, link, meta);
 
     // 8) возврат (пока так)
     return { message: 'Verification email sent', link: link };
   }
 
+  // Валидация полученного от клиента EmailVerificationToken и подтверждение пользователя (isActive: true)
   async confirmEmail(token: string) {
     // 1) берем из БД токен и связанный с ним user
     const hashed = HmacSha256Hex(token);
